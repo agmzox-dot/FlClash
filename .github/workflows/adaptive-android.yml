@@ -89,6 +89,7 @@ jobs:
           trap 'cp /tmp/pubspec.adaptive.yaml pubspec.yaml' EXIT
           yq -i '.hooks.user_defines.setup.build_assets = false | .hooks.user_defines.rust_api.build_assets = false' pubspec.yaml
           flutter pub get
+          sed -i "s/const appName = 'FlClash Adaptive Candidate';/const appName = 'FlClash';/" lib/common/constant.dart
           flutter test --reporter expanded
           cp /tmp/pubspec.adaptive.yaml pubspec.yaml
           trap - EXIT
