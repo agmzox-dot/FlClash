@@ -1,0 +1,4 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="flutter.sharedState">{"startTip":"CI proxy service start","stopTip":"CI proxy service stop","crashlytics":false,"currentProfileName":"CI no-credential fixture","stopText":"Stop","onlyStatisticsProxy":false,"showStopAction":true,"vpnOptions":{"enable":false,"port":7890,"ipv6":false,"dnsHijacking":false,"accessControlProps":{"enable":false,"mode":"rejectSelected","acceptList":[],"rejectList":[]},"allowBypass":true,"systemProxy":false,"bypassDomain":[],"stack":"system","routeAddress":[]},"setupParams":{"test-url":"https://example.test/204","selected-map":{}}}</string>
+</map>

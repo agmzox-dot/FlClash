@@ -175,6 +175,10 @@ jobs:
           set -u
           : > "$GITHUB_WORKSPACE/emulator.log"
           : > "$GITHUB_WORKSPACE/emulator-error.log"
+          : > "$GITHUB_WORKSPACE/emulator-ui.xml"
+          : > "$GITHUB_WORKSPACE/emulator-services.txt"
+          : > "$GITHUB_WORKSPACE/emulator-signature.txt"
+          : > "$GITHUB_WORKSPACE/emulator-acceptance.txt"
           : > "$GITHUB_WORKSPACE/emulator-runner.log"
           : > "$GITHUB_WORKSPACE/emulator-runner-error.log"
           printf '%s\n' 'emulator validation diagnostics initialized' > "$GITHUB_WORKSPACE/emulator-error.log"
@@ -219,6 +223,10 @@ jobs:
           path: |
             emulator.log
             emulator-error.log
+            emulator-ui.xml
+            emulator-services.txt
+            emulator-signature.txt
+            emulator-acceptance.txt
             emulator-runner.log
             emulator-runner-error.log
           if-no-files-found: warn

@@ -1,0 +1,25 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: debug
+ipv6: false
+
+proxies:
+  - name: DIRECT
+    type: direct
+  - name: ByteVirt-LA-24443
+    type: ss
+    server: 192.0.2.1
+    port: 24443
+    cipher: aes-128-gcm
+    password: ci-test-only
+    udp: false
+
+proxy-groups:
+  - name: GLOBAL
+    type: select
+    proxies:
+      - DIRECT
+
+rules:
+  - MATCH,DIRECT
