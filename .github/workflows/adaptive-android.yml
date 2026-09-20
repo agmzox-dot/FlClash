@@ -193,7 +193,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: false
           # The action executes each script line separately; keep this as one command.
-          script: timeout --signal=TERM 15m bash "$GITHUB_WORKSPACE/.github/scripts/adaptive-emulator-smoke.sh"
+          script: timeout --signal=TERM --kill-after=30s 15m bash "$GITHUB_WORKSPACE/.github/scripts/adaptive-emulator-smoke.sh"
       - name: Capture emulator diagnostics
         if: always()
         shell: bash
@@ -205,12 +205,12 @@ jobs:
           : > "$runner_error"
           if command -v adb >/dev/null 2>&1; then
             adb devices -l >> "$runner_error" 2>&1 || true
-            timeout --signal=TERM 30s adb logcat -b all -d -v threadtime > "$runner_log" 2>> "$runner_error" || true
+            timeout --signal=TERM --kill-after=5s 30s adb logcat -b all -d -v threadtime > "$runner_log" 2>> "$runner_error" || true
             {
               printf '\n--- runner diagnostic package ---\n'
-              timeout --signal=TERM 30s adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
+              timeout --signal=TERM --kill-after=5s 30s adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
               printf '\n--- runner diagnostic activity ---\n'
-              timeout --signal=TERM 30s adb shell dumpsys activity activities || true
+              timeout --signal=TERM --kill-after=5s 30s adb shell dumpsys activity activities || true
             } >> "$runner_error" 2>&1
           else
             printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"

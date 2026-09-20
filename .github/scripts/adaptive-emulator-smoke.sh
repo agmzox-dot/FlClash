@@ -36,10 +36,14 @@ record_unverified() {
   printf 'UNVERIFIED: %s\n' "$*" | tee -a "$acceptance_file"
 }
 
+bounded_timeout() {
+  timeout --signal=TERM --kill-after=5s "$@"
+}
+
 adb_retry() {
   local attempts=1
   while (( attempts <= 3 )); do
-    if timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1; then
+    if bounded_timeout "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1; then
       return 0
     fi
     record_error "adb command failed (attempt $attempts/3): adb $*"
@@ -52,14 +56,14 @@ adb_retry() {
 }
 
 adb_once() {
-  timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1
+  bounded_timeout "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1
 }
 
 adb_retry_output() {
   local attempts=1
   local output
   while (( attempts <= 3 )); do
-    if output="$(timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file")"; then
+    if output="$(bounded_timeout "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file")"; then
       printf '%s' "$output"
       return 0
     fi
@@ -73,15 +77,15 @@ adb_retry_output() {
 }
 
 adb_output_once() {
-  timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file"
+  bounded_timeout "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file"
 }
 
 capture_log() {
-  timeout --signal=TERM 15s adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
+  bounded_timeout 15s adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
 }
 
 dump_ui() {
-  timeout --signal=TERM "${adb_timeout_seconds}s" adb shell uiautomator dump /sdcard/flclash-window.xml >> "$error_file" 2>&1 || return 1
+  bounded_timeout "${adb_timeout_seconds}s" adb shell uiautomator dump /sdcard/flclash-window.xml >> "$error_file" 2>&1 || return 1
   adb_output_once shell cat /sdcard/flclash-window.xml > "$ui_file"
 }
 
@@ -182,11 +186,11 @@ dump_diagnostics() {
     {
       printf '\n--- emulator script exit: %s ---\n' "$status"
       printf '\n--- process ---\n'
-      timeout --signal=TERM 30s adb shell pidof "$CANDIDATE_PACKAGE" || true
+      bounded_timeout 30s adb shell pidof "$CANDIDATE_PACKAGE" || true
       printf '\n--- package ---\n'
-      timeout --signal=TERM 30s adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
+      bounded_timeout 30s adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
       printf '\n--- activity ---\n'
-      timeout --signal=TERM 30s adb shell dumpsys activity activities || true
+      bounded_timeout 30s adb shell dumpsys activity activities || true
       printf '\n--- services ---\n'
       cat "$service_file" || true
     } >> "$error_file" 2>&1
