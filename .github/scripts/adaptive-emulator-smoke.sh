@@ -32,6 +32,10 @@ record_pass() {
   printf 'PASS: %s\n' "$*" | tee -a "$acceptance_file"
 }
 
+record_phase() {
+  printf 'PHASE: %s\n' "$*" | tee -a "$acceptance_file"
+}
+
 record_unverified() {
   printf 'UNVERIFIED: %s\n' "$*" | tee -a "$acceptance_file"
 }
@@ -217,9 +221,11 @@ if grep -q '^lib/arm64-v8a/' <<< "$zip_entries"; then
   record_error "selected APK contains arm64 native libraries: $apk"
   exit 1
 fi
+record_phase 'APK architecture, package identity, and signing certificate verification'
 record_pass "selected emulator APK is x86_64: $apk"
 verify_apk_identity_and_signatures
 
+record_phase 'emulator device and boot readiness'
 device_state=''
 device_deadline=$((SECONDS + 180))
 while (( SECONDS < device_deadline )); do
@@ -238,6 +244,7 @@ done
 [[ "$boot_completed" == '1' ]] || { record_error "emulator boot did not complete: $boot_completed"; exit 1; }
 record_pass 'Android emulator reached sys.boot_completed=1'
 
+record_phase 'APK install, replacement install, and Flutter launch'
 adb_retry install -r "$apk" || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
 adb_retry install -r "$apk" || { record_error 'same-certificate replacement install failed'; exit 1; }
 record_pass 'Candidate APK installed and replacement install succeeded'
@@ -256,6 +263,7 @@ done
 
 startup_complete=0
 activity=''
+record_phase 'main activity, Flutter initialization, and visible main navigation'
 startup_deadline=$((SECONDS + 300))
 while (( SECONDS < startup_deadline )); do
   capture_log
@@ -284,6 +292,7 @@ record_pass 'Flutter startup initialization completed (initClash, getIsInit, set
 record_pass 'Flutter-to-Android-to-JNI/Go method channel completed without a startup error'
 
 # Install the fixture after the UI check and after stopping Flutter, so Flutter cannot overwrite it.
+record_phase 'no-credential native QuickAction START and Adaptive fixture validation'
 adb_retry shell am force-stop "$CANDIDATE_PACKAGE" || { record_error 'failed to stop the UI process before service-chain validation'; exit 1; }
 adb_retry push "$fixture_config" /data/local/tmp/flclash-adaptive-config.yaml || { record_error 'failed to stage the no-credential config fixture'; exit 1; }
 adb_retry push "$fixture_preferences" /data/local/tmp/flclash-adaptive-preferences.xml || { record_error 'failed to stage the no-credential shared-state fixture'; exit 1; }
@@ -313,6 +322,7 @@ record_pass 'native QuickAction -> Android service -> JNI/Go quickSetup chain st
 record_pass 'no-credential config reached Adaptive and failed closed without the real endpoint'
 
 adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.STOP" -n "$CANDIDATE_PACKAGE/.QuickActionActivity" || { record_error 'failed to dispatch the native QuickAction STOP intent'; exit 1; }
+record_phase 'native service stop and fatal-condition scan'
 service_stopped=0
 stop_deadline=$((SECONDS + 90))
 while (( SECONDS < stop_deadline )); do

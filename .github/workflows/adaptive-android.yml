@@ -213,8 +213,22 @@ jobs:
               timeout --signal=TERM --kill-after=5s 30s adb shell dumpsys activity activities || true
             } >> "$runner_error" 2>&1
           else
-            printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"
-          fi
+              printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"
+            fi
+      - name: Publish emulator acceptance summary
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          {
+            printf '%s\n' '## Android emulator acceptance'
+            printf '%s\n' '' '### Acceptance records'
+            if [[ -s "$GITHUB_WORKSPACE/emulator-acceptance.txt" ]]; then
+              sed -n '1,240p' "$GITHUB_WORKSPACE/emulator-acceptance.txt"
+            else
+              printf '%s\n' 'No acceptance records were produced.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload emulator log
         if: always()
         uses: actions/upload-artifact@v4
