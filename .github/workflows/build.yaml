@@ -102,7 +102,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: core/go.sum
 
-      - name: Validate Go core wrapper
+      - name: Validate Go test presence
         working-directory: core
         env:
           CGO_ENABLED: 0
@@ -111,11 +111,27 @@ jobs:
             echo 'No Go tests found in core/; the test step would pass vacuously.' >&2
             exit 1
           fi
+
+      - name: Check Go formatting
+        working-directory: core
+        run: |
           test -z "$(gofmt -l ./*.go ./platform ./tun)" || {
             gofmt -l ./*.go ./platform ./tun >&2
             exit 1
           }
+
+      - name: Run Go tests
+        working-directory: core
+        env:
+          CGO_ENABLED: 0
+        run: |
           go test -count=1 .
+
+      - name: Run Go vet
+        working-directory: core
+        env:
+          CGO_ENABLED: 0
+        run: |
           go vet .
           GOOS=linux go vet ./platform
 
