@@ -1,74 +1,58 @@
 name: Build FlClash Adaptive Android Candidate
-
 on:
   workflow_dispatch:
   push:
-    paths:
-      - '.github/workflows/adaptive-android.yml'
-
+    branches:
+      - main
+      - codex/adaptive-android-fix
 permissions:
   contents: read
-
 env:
   FLUTTER_VERSION: '3.47.1'
   GO_VERSION: '1.26.4'
   NDK_VERSION: 'r28c'
-
+  CANDIDATE_PACKAGE: com.follow.clash.adaptive.candidate
 jobs:
   candidate:
-    name: Android arm64 candidate
+    name: Android Adaptive candidate and emulator smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 50
-
+    timeout-minutes: 70
     steps:
-      - name: Checkout pinned fork with submodules
+      - name: Checkout source with submodules
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
-
-      - name: Materialize audited Adaptive payload
+      - name: Verify committed Adaptive sources
         shell: bash
         run: |
-          mkdir -p .adaptive vps
-          python3 - <<'PY'
-          import base64, pathlib, zlib
-          patch = "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"
-          vps = "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"
-          pathlib.Path('.adaptive/patch_v0_8_98.py').write_bytes(zlib.decompress(base64.b64decode(patch)))
-          pathlib.Path('vps/install_mobile_24445.sh').write_bytes(zlib.decompress(base64.b64decode(vps)))
-          PY
-          chmod 0755 .adaptive/patch_v0_8_98.py vps/install_mobile_24445.sh
-          python3 -m py_compile .adaptive/patch_v0_8_98.py
-          bash -n vps/install_mobile_24445.sh
-          test "$(sha256sum .adaptive/patch_v0_8_98.py | awk '{print $1}')" = "363f1846c47f2a8272719767e7c483cb9479498749b2f5b5bf6eb05caf8bc9f9"
-          test "$(sha256sum vps/install_mobile_24445.sh | awk '{print $1}')" = "0c949ebcc00b0c6714ac50f74d6041932d9e29e0391ebd8e5f14e4b5af683655"
-
-      - name: Apply fail-closed Adaptive patch
-        run: python3 .adaptive/patch_v0_8_98.py
-
+          set -euo pipefail
+          test -s core/adaptive/engine.go
+          test -s core/adaptive/engine_test.go
+          test -s core/adaptive_android.go
+          test -s core/adaptive_other.go
+          test -s android/core/src/main/cpp/core.cpp
+          test -s android/service/src/main/java/com/follow/clash/service/modules/NetworkObserveModule.kt
+          test ! -e .adaptive/patch_v0_8_98.py
+          echo "Adaptive implementation is checked out as normal source."
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: core/go.sum
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: master
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: ndk
@@ -76,29 +60,24 @@ jobs:
           ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: true
           link-to-sdk: true
-
       - name: Install Flutter dependencies
         run: flutter pub get
-
       - name: Analyze and test Dart layer
         shell: bash
         run: |
+          set -euo pipefail
           dart format --output=none --set-exit-if-changed lib test tool plugins setup.dart
           flutter analyze --no-fatal-infos
           cp pubspec.yaml /tmp/pubspec.adaptive.yaml
           trap 'cp /tmp/pubspec.adaptive.yaml pubspec.yaml' EXIT
           yq -i '.hooks.user_defines.setup.build_assets = false | .hooks.user_defines.rust_api.build_assets = false' pubspec.yaml
           flutter pub get
-          sed -i "s/const appName = 'FlClash Adaptive Candidate';/const appName = 'FlClash';/" lib/common/constant.dart
-          sed -i "s/const packageName = 'com.follow.clash.adaptive.candidate';/const packageName = 'com.follow.clash';/" lib/common/constant.dart
           flutter test --reporter expanded
-          cp /tmp/pubspec.adaptive.yaml pubspec.yaml
-          trap - EXIT
-          flutter pub get
-
       - name: Format and test Go Adaptive engine
         working-directory: core
+        shell: bash
         run: |
+          set -euo pipefail
           format_targets=(./*.go ./adaptive ./platform ./tun ./Clash.Meta/tunnel/tunnel.go ./Clash.Meta/tunnel/statistic)
           test -z "$(gofmt -l "${format_targets[@]}")" || {
             gofmt -l "${format_targets[@]}" >&2
@@ -111,67 +90,108 @@ jobs:
           CGO_ENABLED=0 go vet .
           CGO_ENABLED=0 go vet github.com/metacubex/mihomo/tunnel/statistic
           CGO_ENABLED=0 GOOS=linux go vet ./platform
-
       - name: Validate Android CGO core
         working-directory: core
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        shell: bash
         run: |
+          set -euo pipefail
           CC="$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android21-clang)"
           test -x "$CC" || { echo "NDK clang not found at $CC" >&2; exit 1; }
           tags="$(sed -n 's/^tags: *//p' ../build_config.yaml)"
           test -n "$tags" || { echo 'Could not read tags from build_config.yaml' >&2; exit 1; }
           export CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC
           go vet "-tags=$tags" . ./adaptive ./tun ./platform
-
       - name: Prepare Android local properties
+        shell: bash
         run: |
           {
             echo "flutter.sdk=$FLUTTER_ROOT"
             echo "sdk.dir=$ANDROID_HOME"
           } > android/local.properties
-
       - name: Android JVM unit tests
         working-directory: android
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        shell: bash
         run: |
+          set -euo pipefail
           wrapper="$FLUTTER_ROOT/bin/cache/artifacts/gradle_wrapper"
           test -d "$wrapper" || flutter precache
           cp -R "$wrapper/." .
           chmod +x gradlew
           ./gradlew :common:testDebugUnitTest :service:testDebugUnitTest :app:testDebugUnitTest \
             -x :app:compileFlutterBuildDebug -x :app:copyFlutterAssetsDebug
-
-      - name: Check patch diff
-        run: |
-          git diff --check
-          git diff --stat
-
       - name: Build arm64 Adaptive Candidate APK
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: dart setup.dart android --env stable --targets apk --arch arm64 -v
-
-      - name: Normalize candidate artifact
+      - name: Preserve arm64 candidate artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p adaptive-artifact
           apk="$(find dist -type f -name '*.apk' | head -n 1)"
-          test -n "$apk" && test -f "$apk" || { echo 'No APK produced' >&2; exit 1; }
+          test -n "$apk" && test -f "$apk"
           cp "$apk" adaptive-artifact/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk
-          cp vps/install_mobile_24445.sh adaptive-artifact/install_mobile_24445.sh
           cat > adaptive-artifact/BUILD_INFO.txt <<'EOF'
-          FlClash Adaptive Candidate v0.1
-          Upstream FlClash: v0.8.98 / 7c61c90ac20493b474d19c75ec96262b478b4b88
-          Mihomo: 70f0570405c3c2c47bb113b88db95006d239b346
+          FlClash Adaptive Candidate
+          Source is the committed Adaptive implementation on the triggering branch.
           Android package: com.follow.clash.adaptive.candidate
-          This candidate intentionally does not replace official FlClash or any future Stable Adaptive package.
-          Adaptive traffic accounting is wired to Mihomo TCP tracker byte/close hooks; no /connections polling is used.
+          This candidate intentionally does not replace official FlClash.
+          No real nodes, subscriptions, or VPS credentials are used by CI.
           EOF
-          (cd adaptive-artifact && sha256sum FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk install_mobile_24445.sh BUILD_INFO.txt > SHA256SUMS)
+      - name: Build x86_64 emulator APK
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: dart setup.dart android --env stable --targets apk --arch amd64 -v
+      - name: Android emulator launch validation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            apk="$(find dist -type f -name '*.apk' -printf '%T@ %p\\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+            test -n "$apk" && test -f "$apk"
+            adb wait-for-device
+            adb install -r "$apk"
+            adb logcat -c
+            adb shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1
+            for attempt in $(seq 1 30); do
+              if adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r' | grep -q '[0-9]'; then
+                break
+              fi
+              sleep 1
+            done
+            pid="$(adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r')"
+            test -n "$pid"
+            sleep 15
+            adb logcat -d -v time > emulator.log
+            if grep -Eq 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError' emulator.log; then
+              grep -E -C 3 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError' emulator.log || true
+              exit 1
+            fi
+            test -n "$(adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r')"
+      - name: Upload emulator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Adaptive-emulator-log
+          path: emulator.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Finalize arm64 artifact checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd adaptive-artifact && sha256sum *.apk BUILD_INFO.txt > SHA256SUMS)
           cat adaptive-artifact/SHA256SUMS
-
       - name: Upload private candidate artifact
         uses: actions/upload-artifact@v4
         with:

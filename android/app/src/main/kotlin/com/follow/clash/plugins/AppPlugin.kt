@@ -23,10 +23,10 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.net.toUri
 import com.follow.clash.R
-import com.follow.clash.common.Components
 import com.follow.clash.common.GlobalState
 import com.follow.clash.common.PendingCallback
 import com.follow.clash.common.QuickAction
+import com.follow.clash.common.channelName
 import com.follow.clash.common.quickIntent
 import com.follow.clash.common.registerReceiverCompat
 import com.follow.clash.getPackageIconPath
@@ -367,7 +367,10 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         channel =
-            MethodChannel(flutterPluginBinding.binaryMessenger, "${Components.PACKAGE_NAME}/app")
+            MethodChannel(
+                flutterPluginBinding.binaryMessenger,
+                channelName(GlobalState.packageName, "app"),
+            )
         channel.setMethodCallHandler(this)
         watchPackageChanges(flutterPluginBinding.applicationContext)
     }

@@ -389,3 +389,8 @@ func forceGC() {
 func updateDns(s *C.char) {
 	handleUpdateDns(takeCString(s))
 }
+
+//export updateAdaptiveNetworkProfile
+func updateAdaptiveNetworkProfile(s *C.char) {
+	adaptiveSetNetworkProfile(takeCString(s))
+}

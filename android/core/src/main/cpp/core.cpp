@@ -36,6 +36,13 @@ Java_com_follow_clash_core_Core_updateDNS(JNIEnv *env, jobject thiz, jstring dns
 
 extern "C"
 JNIEXPORT void JNICALL
+Java_com_follow_clash_core_Core_updateAdaptiveNetworkProfile(JNIEnv *env, jobject thiz,
+                                                             jstring profile) {
+    updateAdaptiveNetworkProfile(get_string(profile));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
 Java_com_follow_clash_core_Core_invokeMethod(JNIEnv *env, jobject thiz, jstring data, jobject cb) {
     const auto interface = new_global(cb);
     invokeMethod(interface, get_string(data));

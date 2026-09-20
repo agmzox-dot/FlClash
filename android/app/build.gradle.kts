@@ -4,8 +4,6 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
 }
 
 val localProperties = Properties().apply {
@@ -35,7 +33,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.follow.clash"
+        applicationId = "com.follow.clash.adaptive.candidate"
         minSdk = flutter.minSdkVersion
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = flutter.versionCode
@@ -62,7 +60,6 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".dev"
         }
 
         release {
@@ -72,7 +69,6 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             } else {
                 signingConfig = signingConfigs.getByName("debug")
-                applicationIdSuffix = ".dev"
             }
 
             proguardFiles(
@@ -107,9 +103,6 @@ dependencies {
     implementation(libs.smali.dexlib2) {
         exclude(group = "com.google.guava", module = "guava")
     }
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.crashlytics.ndk)
-    implementation(libs.firebase.analytics)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

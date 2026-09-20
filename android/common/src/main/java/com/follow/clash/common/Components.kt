@@ -14,3 +14,6 @@ object Components {
     val serviceBroadcastReceiver =
         ComponentName(GlobalState.packageName, "${PACKAGE_NAME}.ServiceBroadcastReceiver")
 }
+
+/** Builds the Flutter channel name from the installed application id. */
+fun channelName(packageName: String, channel: String): String = "$packageName/$channel"

@@ -16,9 +16,11 @@ import com.follow.clash.core.Core
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 private data class NetworkInfo(
+    val adaptiveSessionId: String = UUID.randomUUID().toString(),
     @Volatile var losingUntilMillis: Long = 0,
     @Volatile var dnsList: List<InetAddress> = emptyList(),
 ) {
@@ -34,6 +36,7 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
     }
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentDnsList = listOf<String>()
+    private var currentAdaptiveNetworkProfile = ""
 
     private val request = NetworkRequest.Builder().apply {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -72,6 +75,12 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
             networkInfos[network]?.dnsList = linkProperties.dnsServers
             updateDns()
         }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            if (networkInfos.containsKey(network)) {
+                updateDns()
+            }
+        }
     }
 
     override fun start() {
@@ -100,8 +109,24 @@ internal class NetworkObserveModule(private val service: Service) : ServiceModul
 
     @Synchronized
     private fun updateDns() {
-        val dnsList = networkInfos.asSequence()
-            .minByOrNull(::networkPriority)
+        val selected = networkInfos.entries.minByOrNull(::networkPriority)
+        val selectedCapabilities = selected?.key?.let { network ->
+            connectivity?.getNetworkCapabilities(network)
+        }
+        val adaptiveNetworkProfile = if (
+            selected != null &&
+            selectedCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        ) {
+            "android-session:${selected.value.adaptiveSessionId}"
+        } else {
+            ""
+        }
+        if (adaptiveNetworkProfile != currentAdaptiveNetworkProfile) {
+            currentAdaptiveNetworkProfile = adaptiveNetworkProfile
+            Core.updateAdaptiveNetworkProfile(adaptiveNetworkProfile)
+        }
+
+        val dnsList = selected
             ?.value
             ?.dnsList
             .orEmpty()

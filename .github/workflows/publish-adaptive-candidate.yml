@@ -2,6 +2,15 @@ name: Publish Adaptive Candidate APK
 
 on:
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Build FlClash Adaptive Android Candidate workflow run ID
+        required: true
+        type: string
+      source_sha:
+        description: Commit SHA produced by that workflow run
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -12,23 +21,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download existing APK
+      - name: Download candidate artifact from the selected run
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
-          gh api repos/${{ github.repository }}/actions/artifacts/10559966113/zip > candidate.zip
-          mkdir candidate
-          unzip -q candidate.zip -d candidate
+          set -euo pipefail
+          gh run download "$RUN_ID" \
+            --repo "${{ github.repository }}" \
+            --name FlClash-Adaptive-Candidate-0.8.98-a1-arm64 \
+            --dir candidate
           test -s candidate/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
 
-      - name: Publish APK to Releases
+      - name: Publish selected candidate to a prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create adaptive-candidate-b3a7587 \
+          set -euo pipefail
+          short_sha="${SOURCE_SHA:0:12}"
+          tag="adaptive-candidate-$short_sha"
+          gh release create "$tag" \
             candidate/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk \
             --repo "${{ github.repository }}" \
-            --target b3a7587930b54e18e693e6a41bd7e22406b527b0 \
-            --title "FlClash Adaptive Candidate b3a7587" \
-            --notes "Android arm64 Adaptive Candidate test build." \
+            --target "$SOURCE_SHA" \
+            --title "FlClash Adaptive Candidate $short_sha" \
+            --notes "Manually selected Android arm64 Adaptive Candidate build." \
             --prerelease

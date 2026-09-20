@@ -37,17 +37,27 @@ object GlobalState : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatch
     }
 
     fun setCrashlytics(enable: Boolean) {
-        FirebaseApp.initializeApp(application)
-        FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = enable
+        crashlyticsOrNull()?.isCrashlyticsCollectionEnabled = enable
         if (enable) {
             log("Crashlytics enabled")
         }
     }
 
     fun didCrashOnPreviousExecution(): Boolean {
-        FirebaseApp.initializeApp(application)
-        return FirebaseCrashlytics.getInstance().didCrashOnPreviousExecution()
+        return crashlyticsOrNull()?.didCrashOnPreviousExecution() ?: false
     }
+
+    /**
+     * Crash reporting is optional. Candidate builds intentionally have no
+     * google-services resource, so Firebase must not be part of the startup
+     * critical path. Official builds still initialize and use Crashlytics.
+     */
+    private fun crashlyticsOrNull(): FirebaseCrashlytics? = runCatching {
+        FirebaseApp.initializeApp(application) ?: return@runCatching null
+        FirebaseCrashlytics.getInstance()
+    }.onFailure { error ->
+        log("Crashlytics unavailable: ${error.javaClass.simpleName}")
+    }.getOrNull()
 
     fun lastExitInfo(): Map<String, Any?>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null

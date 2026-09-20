@@ -1,6 +1,7 @@
 package com.follow.clash.plugins
 
-import com.follow.clash.common.Components
+import com.follow.clash.common.GlobalState
+import com.follow.clash.common.channelName
 import com.follow.clash.invokeMethodOnMainThread
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -11,7 +12,10 @@ class TilePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel =
-            MethodChannel(flutterPluginBinding.binaryMessenger, "${Components.PACKAGE_NAME}/tile")
+            MethodChannel(
+                flutterPluginBinding.binaryMessenger,
+                channelName(GlobalState.packageName, "tile"),
+            )
         channel.setMethodCallHandler(this)
     }
 

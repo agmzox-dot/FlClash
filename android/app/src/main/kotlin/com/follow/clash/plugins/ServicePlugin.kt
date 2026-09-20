@@ -2,7 +2,8 @@ package com.follow.clash.plugins
 
 import com.follow.clash.ServiceController
 import com.follow.clash.ServiceState
-import com.follow.clash.common.Components
+import com.follow.clash.common.GlobalState
+import com.follow.clash.common.channelName
 import com.follow.clash.models.SharedState
 import com.google.gson.Gson
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -21,7 +22,7 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        channel = MethodChannel(binding.binaryMessenger, "${Components.PACKAGE_NAME}/service")
+        channel = MethodChannel(binding.binaryMessenger, channelName(GlobalState.packageName, "service"))
         channel.setMethodCallHandler(this)
     }
 
@@ -92,8 +93,17 @@ class ServicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return
         }
         scope.launch {
-            ServiceState.syncSharedState(state)
-            result.success("")
+            runCatching {
+                ServiceState.syncSharedState(state)
+            }.onSuccess {
+                result.success("")
+            }.onFailure { error ->
+                // Shared-state sync runs during Android Core startup. Return a
+                // controlled error to Dart instead of allowing a coroutine
+                // exception to escape on a background thread.
+                GlobalState.log("Unable to sync Android service state: $error")
+                result.success(error.message ?: "Unable to sync service state")
+            }
         }
     }
 
