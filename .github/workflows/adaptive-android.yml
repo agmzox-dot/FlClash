@@ -175,7 +175,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: |
             set -eu
@@ -298,6 +299,27 @@ jobs:
               record_error "application reported a fatal startup condition: $CANDIDATE_PACKAGE"
               exit 1
             fi
+      - name: Capture emulator diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          runner_log="$GITHUB_WORKSPACE/emulator-runner.log"
+          runner_error="$GITHUB_WORKSPACE/emulator-runner-error.log"
+          : > "$runner_log"
+          : > "$runner_error"
+          if command -v adb >/dev/null 2>&1; then
+            adb devices -l >> "$runner_error" 2>&1 || true
+            timeout --signal=TERM 30s adb logcat -b all -d -v threadtime > "$runner_log" 2>> "$runner_error" || true
+            {
+              printf '\n--- runner diagnostic package ---\n'
+              timeout --signal=TERM 30s adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
+              printf '\n--- runner diagnostic activity ---\n'
+              timeout --signal=TERM 30s adb shell dumpsys activity activities || true
+            } >> "$runner_error" 2>&1
+          else
+            printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"
+          fi
       - name: Upload emulator log
         if: always()
         uses: actions/upload-artifact@v4
@@ -306,6 +328,8 @@ jobs:
           path: |
             emulator.log
             emulator-error.log
+            emulator-runner.log
+            emulator-runner-error.log
           if-no-files-found: warn
           retention-days: 14
       - name: Finalize arm64 artifact checksums
