@@ -452,7 +452,6 @@ func (e *Engine) pruneLocked(now time.Time) {
 		}
 	}
 }
-
 func IsHardFailure(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
@@ -486,4 +485,3 @@ func IsHardFailure(err error) bool {
 	}
 	return false
 }
-

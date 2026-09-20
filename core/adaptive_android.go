@@ -451,4 +451,3 @@ func init() {
 	statistic.DefaultRequestTrafficNotify = adaptiveTrackTraffic
 	statistic.DefaultRequestCloseNotify = adaptiveTrackClose
 }
-

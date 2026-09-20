@@ -282,4 +282,3 @@ func TestHardFailureClassifier(t *testing.T) {
 		}
 	}
 }
-
