@@ -58,7 +58,33 @@ jobs:
         run: dart run tool/changelog.dart verify
 
       - name: Run tests
-        run: flutter test --reporter expanded --coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          suites=()
+          for entry in test/*; do
+            if [ -d "$entry" ]; then
+              if find "$entry" -type f -name '*_test.dart' -print -quit | grep -q .; then
+                suites+=("$entry")
+              fi
+            elif [[ "$entry" == *_test.dart ]]; then
+              suites+=("$entry")
+            fi
+          done
+          merged_lcov="$(mktemp)"
+          trap 'rm -f "$merged_lcov"' EXIT
+          for suite in "${suites[@]}"; do
+            echo "::group::Dart suite $suite"
+            rm -f coverage/lcov.info
+            if ! timeout --signal=TERM 180s flutter test "$suite" --reporter expanded --coverage; then
+              echo "::error file=$suite,title=Dart suite failed::The suite failed or timed out"
+              exit 1
+            fi
+            cat coverage/lcov.info >> "$merged_lcov"
+            echo "::endgroup::"
+          done
+          mkdir -p coverage
+          mv "$merged_lcov" coverage/lcov.info
 
       - name: Check coverage
         run: dart run tool/check_coverage.dart coverage/lcov.info 75

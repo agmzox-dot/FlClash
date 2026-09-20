@@ -72,7 +72,24 @@ jobs:
           trap 'cp /tmp/pubspec.adaptive.yaml pubspec.yaml' EXIT
           yq -i '.hooks.user_defines.setup.build_assets = false | .hooks.user_defines.rust_api.build_assets = false' pubspec.yaml
           flutter pub get
-          flutter test --reporter expanded
+          suites=()
+          for entry in test/*; do
+            if [ -d "$entry" ]; then
+              if find "$entry" -type f -name '*_test.dart' -print -quit | grep -q .; then
+                suites+=("$entry")
+              fi
+            elif [[ "$entry" == *_test.dart ]]; then
+              suites+=("$entry")
+            fi
+          done
+          for suite in "${suites[@]}"; do
+            echo "::group::Dart suite $suite"
+            if ! timeout --signal=TERM 180s flutter test "$suite" --reporter expanded; then
+              echo "::error file=$suite,title=Dart suite failed::The suite failed or timed out"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
       - name: Format and test Go Adaptive engine
         working-directory: core
         shell: bash
