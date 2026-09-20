@@ -103,7 +103,10 @@ handle_first_run_dialogs() {
     record_pass 'first-run data-collection dialog was dismissed by the emulator script'
     dismissed=1
   fi
-  return "$dismissed"
+  if [[ "$dismissed" == 1 ]]; then
+    return 0
+  fi
+  return 1
 }
 
 find_sdk_tool() {
