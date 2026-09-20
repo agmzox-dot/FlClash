@@ -149,7 +149,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p adaptive-artifact
-          apk="$(find dist -type f -name '*.apk' | head -n 1)"
+          apk="$(find dist -type f -name '*android-arm64-v8a*.apk' -print -quit)"
+          if [ -z "$apk" ]; then
+            echo 'arm64 APK was not produced' >&2
+            find dist -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
           test -n "$apk" && test -f "$apk"
           cp "$apk" adaptive-artifact/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk
           cat > adaptive-artifact/BUILD_INFO.txt <<'EOF'
@@ -173,35 +178,135 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           script: |
-            set -euo pipefail
-            apk="$(find dist -type f -name '*.apk' -printf '%T@ %p\\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
-            test -n "$apk" && test -f "$apk"
-            adb wait-for-device
-            adb install -r "$apk"
-            adb logcat -c
-            adb shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1
-            for attempt in $(seq 1 30); do
-              if adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r' | grep -q '[0-9]'; then
-                break
+            set -eu
+            apk="$(find dist -type f -name '*android-x86_64*.apk' -print -quit)"
+            log_file="$GITHUB_WORKSPACE/emulator.log"
+            error_file="$GITHUB_WORKSPACE/emulator-error.log"
+            : > "$log_file"
+            : > "$error_file"
+
+            record_error() {
+              printf '%s\n' "$*" >> "$error_file"
+              printf '%s\n' "$*" >&2
+            }
+
+            dump_diagnostics() {
+              status=$?
+              if command -v adb >/dev/null 2>&1; then
+                adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
+                {
+                  printf '\n--- emulator script exit: %s ---\n' "$status"
+                  printf '\n--- process ---\n'
+                  adb shell pidof "$CANDIDATE_PACKAGE" || true
+                  printf '\n--- package ---\n'
+                  adb shell dumpsys package "$CANDIDATE_PACKAGE" || true
+                  printf '\n--- activity ---\n'
+                  adb shell dumpsys activity activities || true
+                } >> "$error_file" 2>&1
+              else
+                record_error 'adb was not available while collecting diagnostics'
               fi
-              sleep 1
-            done
-            pid="$(adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r')"
-            test -n "$pid"
-            sleep 15
-            adb logcat -d -v time > emulator.log
-            if grep -Eq 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError' emulator.log; then
-              grep -E -C 3 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError' emulator.log || true
+              return "$status"
+            }
+            trap dump_diagnostics EXIT
+
+            if [ -z "$apk" ] || [ ! -f "$apk" ]; then
+              record_error 'x86_64 emulator APK was not produced'
+              find dist -type f -name '*.apk' -print >> "$error_file" 2>&1 || true
               exit 1
             fi
-            test -n "$(adb shell pidof "$CANDIDATE_PACKAGE" | tr -d '\\r')"
+            if ! unzip -Z1 "$apk" | grep -q '^lib/x86_64/'; then
+              record_error "selected APK does not contain x86_64 native libraries: $apk"
+              exit 1
+            fi
+            if unzip -Z1 "$apk" | grep -q '^lib/arm64-v8a/'; then
+              record_error "selected APK contains arm64 native libraries: $apk"
+              exit 1
+            fi
+
+            device_state=''
+            for attempt in $(seq 1 90); do
+              device_state="$(adb get-state 2>> "$error_file" || true)"
+              if [ "$device_state" = 'device' ]; then
+                break
+              fi
+              sleep 2
+            done
+            if [ "$device_state" != 'device' ]; then
+              record_error "emulator did not become ready: $device_state"
+              exit 1
+            fi
+
+            boot_completed=''
+            for attempt in $(seq 1 90); do
+              boot_completed="$(adb shell getprop sys.boot_completed 2>> "$error_file" | tr -d '\r' || true)"
+              if [ "$boot_completed" = '1' ]; then
+                break
+              fi
+              sleep 2
+            done
+            if [ "$boot_completed" != '1' ]; then
+              record_error "emulator boot did not complete: $boot_completed"
+              exit 1
+            fi
+
+            if ! adb install -r "$apk" >> "$error_file" 2>&1; then
+              record_error "failed to install x86_64 APK: $apk"
+              exit 1
+            fi
+            if ! adb logcat -c >> "$error_file" 2>&1; then
+              record_error 'failed to clear logcat before launch'
+              exit 1
+            fi
+            if ! adb shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1 >> "$error_file" 2>&1; then
+              record_error "failed to launch $CANDIDATE_PACKAGE"
+              exit 1
+            fi
+
+            pid=''
+            for attempt in $(seq 1 60); do
+              pid="$(adb shell pidof "$CANDIDATE_PACKAGE" 2>> "$error_file" | tr -d '\r' || true)"
+              case "$pid" in
+                *[0-9]*) break ;;
+              esac
+              sleep 2
+            done
+            case "$pid" in
+              *[0-9]*) ;;
+              *)
+                record_error "application process did not start: $CANDIDATE_PACKAGE"
+                exit 1
+                ;;
+            esac
+
+            sleep 20
+            final_pid="$(adb shell pidof "$CANDIDATE_PACKAGE" 2>> "$error_file" | tr -d '\r' || true)"
+            case "$final_pid" in
+              *[0-9]*) ;;
+              *)
+                record_error "application process exited after launch: $CANDIDATE_PACKAGE"
+                exit 1
+                ;;
+            esac
+
+            if ! adb logcat -b all --pid="$final_pid" -d -v threadtime > "$log_file" 2>> "$error_file"; then
+              record_error 'pid-filtered logcat failed; capturing all logcat buffers'
+              adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
+            fi
+            if grep -Eq 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|ANR in' "$log_file"; then
+              grep -E -C 3 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|ANR in' "$log_file" || true
+              record_error "application reported a fatal startup condition: $CANDIDATE_PACKAGE"
+              exit 1
+            fi
       - name: Upload emulator log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: FlClash-Adaptive-emulator-log
-          path: emulator.log
-          if-no-files-found: ignore
+          path: |
+            emulator.log
+            emulator-error.log
+          if-no-files-found: warn
           retention-days: 14
       - name: Finalize arm64 artifact checksums
         shell: bash
