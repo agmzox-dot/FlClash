@@ -14,6 +14,7 @@ signature_file="$GITHUB_WORKSPACE/emulator-signature.txt"
 acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
+adb_timeout_seconds=45
 
 : > "$log_file"
 : > "$error_file"
@@ -38,7 +39,7 @@ record_unverified() {
 adb_retry() {
   local attempts=1
   while (( attempts <= 5 )); do
-    if adb "$@" >> "$error_file" 2>&1; then
+    if timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1; then
       return 0
     fi
     record_error "adb command failed (attempt $attempts/5): adb $*"
@@ -54,7 +55,7 @@ adb_retry_output() {
   local attempts=1
   local output
   while (( attempts <= 5 )); do
-    if output="$(adb "$@" 2>> "$error_file")"; then
+    if output="$(timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file")"; then
       printf '%s' "$output"
       return 0
     fi
@@ -72,7 +73,7 @@ capture_log() {
 }
 
 dump_ui() {
-  adb shell uiautomator dump /sdcard/flclash-window.xml >> "$error_file" 2>&1 || return 1
+  timeout --signal=TERM "${adb_timeout_seconds}s" adb shell uiautomator dump /sdcard/flclash-window.xml >> "$error_file" 2>&1 || return 1
   adb_retry_output shell cat /sdcard/flclash-window.xml > "$ui_file"
 }
 
