@@ -168,6 +168,16 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: dart setup.dart android --env stable --targets apk --arch amd64 -v
+      - name: Initialize emulator diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          : > "$GITHUB_WORKSPACE/emulator.log"
+          : > "$GITHUB_WORKSPACE/emulator-error.log"
+          : > "$GITHUB_WORKSPACE/emulator-runner.log"
+          : > "$GITHUB_WORKSPACE/emulator-runner-error.log"
+          printf '%s\n' 'emulator validation diagnostics initialized' > "$GITHUB_WORKSPACE/emulator-error.log"
       - name: Android emulator launch validation
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -177,7 +187,7 @@ jobs:
           profile: pixel_2
           emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
+          disable-animations: false
           script: |
             set -eu
             apk="$(find dist -type f -name '*android-x86_64*.apk' -print -quit)"
@@ -189,6 +199,37 @@ jobs:
             record_error() {
               printf '%s\n' "$*" >> "$error_file"
               printf '%s\n' "$*" >&2
+            }
+
+            adb_retry() {
+              attempts=1
+              while [ "$attempts" -le 5 ]; do
+                if adb "$@" >> "$error_file" 2>&1; then
+                  return 0
+                fi
+                record_error "adb command failed (attempt $attempts/5): adb $*"
+                attempts=$((attempts + 1))
+                if [ "$attempts" -le 5 ]; then
+                  sleep 5
+                fi
+              done
+              return 1
+            }
+
+            adb_retry_output() {
+              attempts=1
+              while [ "$attempts" -le 5 ]; do
+                if output="$(adb "$@" 2>> "$error_file")"; then
+                  printf '%s' "$output"
+                  return 0
+                fi
+                record_error "adb output command failed (attempt $attempts/5): adb $*"
+                attempts=$((attempts + 1))
+                if [ "$attempts" -le 5 ]; then
+                  sleep 5
+                fi
+              done
+              return 1
             }
 
             dump_diagnostics() {
@@ -251,22 +292,22 @@ jobs:
               exit 1
             fi
 
-            if ! adb install -r "$apk" >> "$error_file" 2>&1; then
+            if ! adb_retry install -r "$apk"; then
               record_error "failed to install x86_64 APK: $apk"
               exit 1
             fi
-            if ! adb logcat -c >> "$error_file" 2>&1; then
+            if ! adb_retry logcat -c; then
               record_error 'failed to clear logcat before launch'
               exit 1
             fi
-            if ! adb shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1 >> "$error_file" 2>&1; then
+            if ! adb_retry shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1; then
               record_error "failed to launch $CANDIDATE_PACKAGE"
               exit 1
             fi
 
             pid=''
             for attempt in $(seq 1 60); do
-              pid="$(adb shell pidof "$CANDIDATE_PACKAGE" 2>> "$error_file" | tr -d '\r' || true)"
+              pid="$(adb_retry_output shell pidof "$CANDIDATE_PACKAGE" | tr -d '\r' || true)"
               case "$pid" in
                 *[0-9]*) break ;;
               esac
@@ -281,7 +322,7 @@ jobs:
             esac
 
             sleep 20
-            final_pid="$(adb shell pidof "$CANDIDATE_PACKAGE" 2>> "$error_file" | tr -d '\r' || true)"
+            final_pid="$(adb_retry_output shell pidof "$CANDIDATE_PACKAGE" | tr -d '\r' || true)"
             case "$final_pid" in
               *[0-9]*) ;;
               *)
