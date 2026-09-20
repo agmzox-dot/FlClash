@@ -370,7 +370,7 @@ func loadConfig(path string) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-return adaptiveLoadConfig(buf, executor.ParseWithBytes)
+	return adaptiveLoadConfig(buf, executor.ParseWithBytes)
 }
 
 func applyConfig(params *SetupParams) error {
