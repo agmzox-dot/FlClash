@@ -229,6 +229,23 @@ jobs:
               printf '%s\n' 'No acceptance records were produced.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish emulator acceptance notices
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
+          if [[ -s "$acceptance_file" ]]; then
+            while IFS= read -r line; do
+              case "$line" in
+                PHASE:*|PASS:*|UNVERIFIED:*)
+                  printf '::notice title=Android emulator acceptance::%s\n' "$line"
+                  ;;
+              esac
+            done < "$acceptance_file"
+          else
+            printf '%s\n' '::notice title=Android emulator acceptance::No acceptance records were produced.'
+          fi
       - name: Upload emulator log
         if: always()
         uses: actions/upload-artifact@v4
