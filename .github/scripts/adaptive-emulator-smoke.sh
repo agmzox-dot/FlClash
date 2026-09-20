@@ -14,7 +14,7 @@ signature_file="$GITHUB_WORKSPACE/emulator-signature.txt"
 acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
-adb_timeout_seconds=20
+adb_timeout_seconds=12
 
 : > "$log_file"
 : > "$error_file"
@@ -38,47 +38,55 @@ record_unverified() {
 
 adb_retry() {
   local attempts=1
-  while (( attempts <= 5 )); do
+  while (( attempts <= 3 )); do
     if timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1; then
       return 0
     fi
-    record_error "adb command failed (attempt $attempts/5): adb $*"
+    record_error "adb command failed (attempt $attempts/3): adb $*"
     attempts=$((attempts + 1))
-    if (( attempts <= 5 )); then
-      sleep 5
+    if (( attempts <= 3 )); then
+      sleep 2
     fi
   done
   return 1
+}
+
+adb_once() {
+  timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" >> "$error_file" 2>&1
 }
 
 adb_retry_output() {
   local attempts=1
   local output
-  while (( attempts <= 5 )); do
+  while (( attempts <= 3 )); do
     if output="$(timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file")"; then
       printf '%s' "$output"
       return 0
     fi
-    record_error "adb output command failed (attempt $attempts/5): adb $*"
+    record_error "adb output command failed (attempt $attempts/3): adb $*"
     attempts=$((attempts + 1))
-    if (( attempts <= 5 )); then
-      sleep 5
+    if (( attempts <= 3 )); then
+      sleep 2
     fi
   done
   return 1
 }
 
+adb_output_once() {
+  timeout --signal=TERM "${adb_timeout_seconds}s" adb "$@" 2>> "$error_file"
+}
+
 capture_log() {
-  timeout --signal=TERM 30s adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
+  timeout --signal=TERM 15s adb logcat -b all -d -v threadtime > "$log_file" 2>> "$error_file" || true
 }
 
 dump_ui() {
   timeout --signal=TERM "${adb_timeout_seconds}s" adb shell uiautomator dump /sdcard/flclash-window.xml >> "$error_file" 2>&1 || return 1
-  adb_retry_output shell cat /sdcard/flclash-window.xml > "$ui_file"
+  adb_output_once shell cat /sdcard/flclash-window.xml > "$ui_file"
 }
 
 dump_services() {
-  adb_retry_output shell dumpsys activity services "$CANDIDATE_PACKAGE" > "$service_file" || true
+  adb_output_once shell dumpsys activity services "$CANDIDATE_PACKAGE" > "$service_file" || true
 }
 
 tap_text() {
@@ -91,7 +99,7 @@ tap_text() {
     return 1
   fi
   read -r left top right bottom <<< "$bounds"
-  adb_retry shell input tap "$(( (left + right) / 2 ))" "$(( (top + bottom) / 2 ))"
+  adb_once shell input tap "$(( (left + right) / 2 ))" "$(( (top + bottom) / 2 ))"
 }
 
 handle_first_run_dialogs() {
@@ -209,15 +217,17 @@ record_pass "selected emulator APK is x86_64: $apk"
 verify_apk_identity_and_signatures
 
 device_state=''
-for attempt in $(seq 1 90); do
-  device_state="$(adb get-state 2>> "$error_file" || true)"
+device_deadline=$((SECONDS + 180))
+while (( SECONDS < device_deadline )); do
+  device_state="$(adb_output_once get-state || true)"
   [[ "$device_state" == 'device' ]] && break
   sleep 2
 done
 [[ "$device_state" == 'device' ]] || { record_error "emulator did not become ready: $device_state"; exit 1; }
 boot_completed=''
-for attempt in $(seq 1 90); do
-  boot_completed="$(adb shell getprop sys.boot_completed 2>> "$error_file" | tr -d '\r' || true)"
+boot_deadline=$((SECONDS + 180))
+while (( SECONDS < boot_deadline )); do
+  boot_completed="$(adb_output_once shell getprop sys.boot_completed | tr -d '\r' || true)"
   [[ "$boot_completed" == '1' ]] && break
   sleep 2
 done
@@ -232,8 +242,9 @@ adb_retry shell am force-stop "$CANDIDATE_PACKAGE" || { record_error "failed to 
 adb_retry shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1 || { record_error "failed to launch $CANDIDATE_PACKAGE"; exit 1; }
 
 pid=''
-for attempt in $(seq 1 90); do
-  pid="$(adb_retry_output shell pidof "$CANDIDATE_PACKAGE" | tr -d '\r' | awk '{print $1}' || true)"
+pid_deadline=$((SECONDS + 180))
+while (( SECONDS < pid_deadline )); do
+  pid="$(adb_output_once shell pidof "$CANDIDATE_PACKAGE" | tr -d '\r' | awk '{print $1}' || true)"
   [[ "$pid" =~ [0-9] ]] && break
   sleep 2
 done
@@ -241,11 +252,12 @@ done
 
 startup_complete=0
 activity=''
-for attempt in $(seq 1 120); do
+startup_deadline=$((SECONDS + 300))
+while (( SECONDS < startup_deadline )); do
   capture_log
   dump_ui || true
   if handle_first_run_dialogs; then sleep 2; continue; fi
-  activity="$(adb_retry_output shell dumpsys activity activities | tr -d '\r' | grep -m 1 'mResumedActivity' || true)"
+  activity="$(adb_output_once shell dumpsys activity activities | tr -d '\r' | grep -m 1 'mResumedActivity' || true)"
   has_core_init=0; has_core_ready=0; has_config_setup=0; has_init_status=0; has_main_ui=0
   grep -q '\[APP\] Invoke method initClash completed' "$log_file" && has_core_init=1
   grep -q '\[APP\] Invoke method getIsInit completed' "$log_file" && has_core_ready=1
@@ -278,7 +290,8 @@ adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.START" -n "$CANDIDATE_PAC
 
 proxy_service_started=0
 adaptive_fixture_loaded=0
-for attempt in $(seq 1 60); do
+service_deadline=$((SECONDS + 180))
+while (( SECONDS < service_deadline )); do
   capture_log
   dump_services
   grep -q 'ProxyService' "$service_file" && proxy_service_started=1
@@ -297,7 +310,8 @@ record_pass 'no-credential config reached Adaptive and failed closed without the
 
 adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.STOP" -n "$CANDIDATE_PACKAGE/.QuickActionActivity" || { record_error 'failed to dispatch the native QuickAction STOP intent'; exit 1; }
 service_stopped=0
-for attempt in $(seq 1 30); do
+stop_deadline=$((SECONDS + 90))
+while (( SECONDS < stop_deadline )); do
   dump_services
   if ! grep -q 'ProxyService' "$service_file"; then service_stopped=1; break; fi
   sleep 2
