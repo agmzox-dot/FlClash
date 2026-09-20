@@ -209,7 +209,7 @@ jobs:
               fi
               return "$status"
             }
-            trap dump_diagnostics EXIT
+            trap dump_diagnostics 0
 
             if [ -z "$apk" ] || [ ! -f "$apk" ]; then
               record_error 'x86_64 emulator APK was not produced'
