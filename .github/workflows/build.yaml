@@ -115,10 +115,16 @@ jobs:
       - name: Check Go formatting
         working-directory: core
         run: |
-          test -z "$(gofmt -l ./*.go ./platform ./tun)" || {
-            gofmt -l ./*.go ./platform ./tun >&2
+          files="$(gofmt -l ./*.go ./platform ./tun)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files" >&2
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              file="${file#./}"
+              echo "::error file=core/$file,title=Go formatting::gofmt required"
+            done <<< "$files"
             exit 1
-          }
+          fi
 
       - name: Run Go tests
         working-directory: core
