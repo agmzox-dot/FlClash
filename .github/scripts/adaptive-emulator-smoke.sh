@@ -14,7 +14,7 @@ signature_file="$GITHUB_WORKSPACE/emulator-signature.txt"
 acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
-adb_timeout_seconds=45
+adb_timeout_seconds=20
 
 : > "$log_file"
 : > "$error_file"
