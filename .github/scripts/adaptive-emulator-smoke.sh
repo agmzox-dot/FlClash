@@ -16,6 +16,7 @@ fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
 apk_install_timeout_seconds=240
+staged_apk='/data/local/tmp/flclash-adaptive-candidate.apk'
 
 : > "$log_file"
 : > "$error_file"
@@ -61,24 +62,46 @@ adb_retry() {
   return 1
 }
 
+stage_candidate_apk() {
+  local output
+  local status
+  if output="$(bounded_timeout 180s adb push "$apk" "$staged_apk" 2>&1)"; then
+    printf 'adb push candidate APK succeeded:\n%s\n' "$output" >> "$error_file"
+    record_pass 'x86_64 Candidate APK staged on the emulator for package-manager installation'
+    return 0
+  fi
+  status=$?
+  printf 'adb push candidate APK failed (exit %s):\n%s\n' "$status" "$output" >> "$error_file"
+  if (( status == 124 || status == 137 )); then
+    record_error 'staging the Candidate APK timed out after 180 seconds'
+  else
+    record_error "staging the Candidate APK failed with exit $status"
+  fi
+  return 1
+}
+
 adb_install_candidate() {
   local attempts=1
   local output
   local detail
+  local status
   while (( attempts <= 2 )); do
-    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r "$apk" 2>&1)"; then
-      printf 'adb install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
+    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb shell pm install -r "$staged_apk" 2>&1)"; then
+      printf 'package-manager install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
       return 0
     fi
-    printf 'adb install attempt %s failed:\n%s\n' "$attempts" "$output" >> "$error_file"
+    status=$?
+    printf 'package-manager install attempt %s failed (exit %s):\n%s\n' "$attempts" "$status" "$output" >> "$error_file"
     detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ' )"
     if (( ${#detail} > 240 )); then
       detail="${detail: -240}"
     fi
-    if [[ -n "$detail" ]]; then
-      record_error "APK install attempt $attempts/2 failed: $detail"
+    if (( status == 124 || status == 137 )); then
+      record_error "APK package-manager install attempt $attempts/2 timed out after ${apk_install_timeout_seconds} seconds"
+    elif [[ -n "$detail" ]]; then
+      record_error "APK package-manager install attempt $attempts/2 failed: $detail"
     else
-      record_error "APK install attempt $attempts/2 failed"
+      record_error "APK package-manager install attempt $attempts/2 failed with exit $status"
     fi
     attempts=$((attempts + 1))
     if (( attempts <= 2 )); then
@@ -275,6 +298,7 @@ record_pass 'Android emulator reached sys.boot_completed=1'
 
 record_phase 'APK install, replacement install, and Flutter launch'
 record_phase 'initial x86_64 Candidate APK install'
+stage_candidate_apk || { record_error "failed to stage x86_64 APK: $apk"; exit 1; }
 adb_install_candidate || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
 record_pass 'initial x86_64 Candidate APK install succeeded'
 record_phase 'same-certificate Candidate replacement install'
