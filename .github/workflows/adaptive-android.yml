@@ -238,7 +238,7 @@ jobs:
           if [[ -s "$acceptance_file" ]]; then
             while IFS= read -r line; do
               case "$line" in
-                PHASE:*|PASS:*|UNVERIFIED:*)
+                PHASE:*|PASS:*|FAIL:*|UNVERIFIED:*)
                   printf '::notice title=Android emulator acceptance::%s\n' "$line"
                   ;;
               esac

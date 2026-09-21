@@ -15,6 +15,7 @@ acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
+apk_install_timeout_seconds=180
 
 : > "$log_file"
 : > "$error_file"
@@ -25,6 +26,7 @@ adb_timeout_seconds=12
 
 record_error() {
   printf '%s\n' "$*" >> "$error_file"
+  printf 'FAIL: %s\n' "$*" | tee -a "$acceptance_file" >&2
   printf '%s\n' "$*" >&2
 }
 
@@ -54,6 +56,24 @@ adb_retry() {
     attempts=$((attempts + 1))
     if (( attempts <= 3 )); then
       sleep 2
+    fi
+  done
+  return 1
+}
+
+adb_install_candidate() {
+  local attempts=1
+  local output
+  while (( attempts <= 2 )); do
+    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r "$apk" 2>&1)"; then
+      printf 'adb install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
+      return 0
+    fi
+    printf 'adb install attempt %s failed:\n%s\n' "$attempts" "$output" >> "$error_file"
+    record_error "APK install attempt $attempts/2 failed"
+    attempts=$((attempts + 1))
+    if (( attempts <= 2 )); then
+      sleep 3
     fi
   done
   return 1
@@ -245,12 +265,18 @@ done
 record_pass 'Android emulator reached sys.boot_completed=1'
 
 record_phase 'APK install, replacement install, and Flutter launch'
-adb_retry install -r "$apk" || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
-adb_retry install -r "$apk" || { record_error 'same-certificate replacement install failed'; exit 1; }
+record_phase 'initial x86_64 Candidate APK install'
+adb_install_candidate || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
+record_pass 'initial x86_64 Candidate APK install succeeded'
+record_phase 'same-certificate Candidate replacement install'
+adb_install_candidate || { record_error 'same-certificate replacement install failed'; exit 1; }
+record_pass 'same-certificate Candidate replacement install succeeded'
 record_pass 'Candidate APK installed and replacement install succeeded'
+record_phase 'Flutter launcher dispatch'
 adb_retry logcat -c || { record_error 'failed to clear logcat before launch'; exit 1; }
 adb_retry shell am force-stop "$CANDIDATE_PACKAGE" || { record_error "failed to reset $CANDIDATE_PACKAGE before launch"; exit 1; }
 adb_retry shell monkey -p "$CANDIDATE_PACKAGE" -c android.intent.category.LAUNCHER 1 || { record_error "failed to launch $CANDIDATE_PACKAGE"; exit 1; }
+record_pass 'Flutter launcher dispatch returned successfully'
 
 pid=''
 pid_deadline=$((SECONDS + 180))
