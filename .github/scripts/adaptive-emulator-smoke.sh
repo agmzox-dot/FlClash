@@ -66,12 +66,15 @@ adb_install_candidate() {
   local output
   local detail
   while (( attempts <= 2 )); do
-    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r --no-streaming "$apk" 2>&1)"; then
+    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r "$apk" 2>&1)"; then
       printf 'adb install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
       return 0
     fi
     printf 'adb install attempt %s failed:\n%s\n' "$attempts" "$output" >> "$error_file"
-    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ' | cut -c1-240)"
+    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ' )"
+    if (( ${#detail} > 240 )); then
+      detail="${detail: -240}"
+    fi
     if [[ -n "$detail" ]]; then
       record_error "APK install attempt $attempts/2 failed: $detail"
     else
