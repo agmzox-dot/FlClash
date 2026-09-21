@@ -258,6 +258,7 @@ jobs:
             emulator-services.txt
             emulator-signature.txt
             emulator-acceptance.txt
+            adb-install-attempt-*.log
             emulator-runner.log
             emulator-runner-error.log
           if-no-files-found: warn

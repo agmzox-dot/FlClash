@@ -63,18 +63,45 @@ adb_retry() {
 
 adb_install_candidate() {
   local attempts=1
-  local output
+  local install_pid
+  local output_file
   local detail
   local status
+  local started_at
+  local elapsed
   while (( attempts <= 2 )); do
-    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r --abi x86_64 "$apk" 2>&1)"; then
-      printf 'adb install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
-      return 0
-    else
-      status=$?
+    output_file="$GITHUB_WORKSPACE/adb-install-attempt-${attempts}.log"
+    : > "$output_file"
+    printf 'starting adb install attempt %s (timeout %ss)\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
+    setsid adb install -r --abi x86_64 "$apk" > "$output_file" 2>&1 &
+    install_pid=$!
+    started_at=$SECONDS
+    status=''
+    while kill -0 "$install_pid" 2>/dev/null; do
+      elapsed=$((SECONDS - started_at))
+      if (( elapsed >= apk_install_timeout_seconds )); then
+        status=124
+        printf 'adb install attempt %s exceeded its %ss timeout; terminating its process group\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
+        kill -TERM -- "-$install_pid" 2>/dev/null || kill -TERM "$install_pid" 2>/dev/null || true
+        sleep 5
+        kill -KILL -- "-$install_pid" 2>/dev/null || kill -KILL "$install_pid" 2>/dev/null || true
+        wait "$install_pid" 2>/dev/null || true
+        break
+      fi
+      sleep 2
+    done
+    if [[ -z "$status" ]]; then
+      if wait "$install_pid"; then
+        printf 'adb install attempt %s succeeded:\n' "$attempts" >> "$error_file"
+        cat "$output_file" >> "$error_file"
+        return 0
+      else
+        status=$?
+      fi
     fi
-    printf 'adb install attempt %s failed (exit %s):\n%s\n' "$attempts" "$status" "$output" >> "$error_file"
-    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ')"
+    printf 'adb install attempt %s failed (exit %s):\n' "$attempts" "$status" >> "$error_file"
+    cat "$output_file" >> "$error_file"
+    detail="$(tr '\r\n' ' ' < "$output_file" | tr -s ' ')"
     if (( ${#detail} > 240 )); then
       detail="${detail: -240}"
     fi
