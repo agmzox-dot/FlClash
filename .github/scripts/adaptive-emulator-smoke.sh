@@ -15,6 +15,7 @@ acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
+apk_stage_timeout_seconds=900
 apk_install_timeout_seconds=600
 staged_apk='/data/local/tmp/flclash-adaptive-candidate.apk'
 
@@ -44,7 +45,7 @@ record_unverified() {
 }
 
 bounded_timeout() {
-  timeout --signal=TERM --kill-after=5s "$@"
+  timeout --foreground --signal=TERM --kill-after=5s "$@"
 }
 
 adb_retry() {
@@ -63,18 +64,15 @@ adb_retry() {
 }
 
 stage_candidate_apk() {
-  local output
   local status
-  if output="$(bounded_timeout 180s adb push "$apk" "$staged_apk" 2>&1)"; then
-    printf 'adb push candidate APK succeeded:\n%s\n' "$output" >> "$error_file"
+  if bounded_timeout "${apk_stage_timeout_seconds}s" adb push "$apk" "$staged_apk" >> "$error_file" 2>&1; then
     record_pass 'x86_64 Candidate APK staged on the emulator for package-manager installation'
     return 0
   else
     status=$?
   fi
-  printf 'adb push candidate APK failed (exit %s):\n%s\n' "$status" "$output" >> "$error_file"
   if (( status == 124 || status == 137 )); then
-    record_error 'staging the Candidate APK timed out after 180 seconds'
+    record_error "staging the Candidate APK timed out after ${apk_stage_timeout_seconds} seconds"
   else
     record_error "staging the Candidate APK failed with exit $status"
   fi
