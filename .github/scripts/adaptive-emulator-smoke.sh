@@ -69,8 +69,9 @@ stage_candidate_apk() {
     printf 'adb push candidate APK succeeded:\n%s\n' "$output" >> "$error_file"
     record_pass 'x86_64 Candidate APK staged on the emulator for package-manager installation'
     return 0
+  else
+    status=$?
   fi
-  status=$?
   printf 'adb push candidate APK failed (exit %s):\n%s\n' "$status" "$output" >> "$error_file"
   if (( status == 124 || status == 137 )); then
     record_error 'staging the Candidate APK timed out after 180 seconds'
@@ -89,10 +90,11 @@ adb_install_candidate() {
     if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb shell pm install -r "$staged_apk" 2>&1)"; then
       printf 'package-manager install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
       return 0
+    else
+      status=$?
     fi
-    status=$?
     printf 'package-manager install attempt %s failed (exit %s):\n%s\n' "$attempts" "$status" "$output" >> "$error_file"
-    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ' )"
+    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ')"
     if (( ${#detail} > 240 )); then
       detail="${detail: -240}"
     fi
