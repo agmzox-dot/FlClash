@@ -15,7 +15,7 @@ acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
-apk_install_timeout_seconds=180
+apk_install_timeout_seconds=240
 
 : > "$log_file"
 : > "$error_file"
@@ -64,13 +64,19 @@ adb_retry() {
 adb_install_candidate() {
   local attempts=1
   local output
+  local detail
   while (( attempts <= 2 )); do
-    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r "$apk" 2>&1)"; then
+    if output="$(bounded_timeout "${apk_install_timeout_seconds}s" adb install -r --no-streaming "$apk" 2>&1)"; then
       printf 'adb install attempt %s succeeded:\n%s\n' "$attempts" "$output" >> "$error_file"
       return 0
     fi
     printf 'adb install attempt %s failed:\n%s\n' "$attempts" "$output" >> "$error_file"
-    record_error "APK install attempt $attempts/2 failed"
+    detail="$(printf '%s' "$output" | tr '\r\n' ' ' | tr -s ' ' | cut -c1-240)"
+    if [[ -n "$detail" ]]; then
+      record_error "APK install attempt $attempts/2 failed: $detail"
+    else
+      record_error "APK install attempt $attempts/2 failed"
+    fi
     attempts=$((attempts + 1))
     if (( attempts <= 2 )); then
       sleep 3

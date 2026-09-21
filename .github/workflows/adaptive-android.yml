@@ -193,7 +193,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: false
           # The action executes each script line separately; keep this as one command.
-          script: timeout --signal=TERM --kill-after=30s 15m bash "$GITHUB_WORKSPACE/.github/scripts/adaptive-emulator-smoke.sh"
+          script: timeout --signal=TERM --kill-after=30s 30m bash "$GITHUB_WORKSPACE/.github/scripts/adaptive-emulator-smoke.sh"
       - name: Capture emulator diagnostics
         if: always()
         shell: bash
