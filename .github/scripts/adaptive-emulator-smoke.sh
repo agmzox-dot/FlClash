@@ -15,7 +15,9 @@ acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
-apk_install_timeout_seconds=600
+apk_stage_timeout_seconds=180
+apk_install_timeout_seconds=300
+staged_apk='/data/local/tmp/flclash-adaptive-candidate.apk'
 
 : > "$log_file"
 : > "$error_file"
@@ -63,54 +65,45 @@ adb_retry() {
 
 adb_install_candidate() {
   local attempts=1
-  local install_pid
   local output_file
   local detail
   local status
-  local started_at
-  local elapsed
   while (( attempts <= 2 )); do
     output_file="$GITHUB_WORKSPACE/adb-install-attempt-${attempts}.log"
     : > "$output_file"
-    printf 'starting adb install attempt %s (timeout %ss)\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
-    setsid adb install -r --abi x86_64 "$apk" > "$output_file" 2>&1 &
-    install_pid=$!
-    started_at=$SECONDS
     status=''
-    while kill -0 "$install_pid" 2>/dev/null; do
-      elapsed=$((SECONDS - started_at))
-      if (( elapsed >= apk_install_timeout_seconds )); then
-        status=124
-        printf 'adb install attempt %s exceeded its %ss timeout; terminating its process group\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
-        kill -TERM -- "-$install_pid" 2>/dev/null || kill -TERM "$install_pid" 2>/dev/null || true
-        sleep 5
-        kill -KILL -- "-$install_pid" 2>/dev/null || kill -KILL "$install_pid" 2>/dev/null || true
-        wait "$install_pid" 2>/dev/null || true
-        break
-      fi
-      sleep 2
-    done
-    if [[ -z "$status" ]]; then
-      if wait "$install_pid"; then
-        printf 'adb install attempt %s succeeded:\n' "$attempts" >> "$error_file"
-        cat "$output_file" >> "$error_file"
-        return 0
+    printf 'starting adb push for install attempt %s (timeout %ss)\n' "$attempts" "$apk_stage_timeout_seconds" >> "$error_file"
+    if bounded_timeout "${apk_stage_timeout_seconds}s" adb push "$apk" "$staged_apk" >> "$output_file" 2>&1; then
+      printf 'adb push for install attempt %s succeeded\n' "$attempts" >> "$output_file"
+    else
+      status=$?
+      printf 'adb push for install attempt %s failed (exit %s)\n' "$attempts" "$status" >> "$output_file"
+    fi
+    if [[ -z "${status:-}" ]]; then
+      printf 'starting emulator-side package install attempt %s (timeout %ss)\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
+      if bounded_timeout "${apk_install_timeout_seconds}s" adb shell pm install -r -d --abi x86_64 "$staged_apk" >> "$output_file" 2>&1; then
+        if grep -Eq '(^|[[:space:]])Success([[:space:]]|$)' "$output_file"; then
+          printf 'emulator-side package install attempt %s succeeded:\n' "$attempts" >> "$error_file"
+          cat "$output_file" >> "$error_file"
+          return 0
+        fi
+        status=1
       else
         status=$?
       fi
     fi
-    printf 'adb install attempt %s failed (exit %s):\n' "$attempts" "$status" >> "$error_file"
+    printf 'adb package install attempt %s failed (exit %s):\n' "$attempts" "$status" >> "$error_file"
     cat "$output_file" >> "$error_file"
     detail="$(tr '\r\n' ' ' < "$output_file" | tr -s ' ')"
     if (( ${#detail} > 240 )); then
       detail="${detail: -240}"
     fi
     if (( status == 124 || status == 137 )); then
-      record_error "APK adb install attempt $attempts/2 timed out after ${apk_install_timeout_seconds} seconds"
+      record_error "APK package install attempt $attempts/2 timed out while staging or installing"
     elif [[ -n "$detail" ]]; then
-      record_error "APK adb install attempt $attempts/2 failed: $detail"
+      record_error "APK package install attempt $attempts/2 failed: $detail"
     else
-      record_error "APK adb install attempt $attempts/2 failed with exit $status"
+      record_error "APK package install attempt $attempts/2 failed with exit $status"
     fi
     attempts=$((attempts + 1))
     if (( attempts <= 2 )); then
@@ -237,7 +230,7 @@ verify_apk_identity_and_signatures() {
     return 1
   fi
   record_pass "x86_64 and arm64 Candidate APKs have package $CANDIDATE_PACKAGE and the same certificate"
-  printf 'upgrade_check: adb install -r is performed twice on the same certificate in this run\n' >> "$signature_file"
+  printf 'upgrade_check: emulator-side pm install -r is performed twice on the same certificate in this run\n' >> "$signature_file"
   printf 'known_previous_candidate_certificate: unavailable in CI; overwrite of an unknown old install is not proven\n' >> "$signature_file"
   record_unverified 'direct overwrite of an older Candidate is only safe when its installed certificate matches the recorded SHA-256 digest; no old APK is available to compare'
 }
@@ -316,6 +309,19 @@ adb_retry shell settings put global package_verifier_enable 0 || {
   exit 1
 }
 record_pass 'emulator package verification disabled for deterministic APK installation'
+record_phase 'emulator package manager readiness'
+package_manager_state=''
+package_manager_deadline=$((SECONDS + 120))
+while (( SECONDS < package_manager_deadline )); do
+  package_manager_state="$(adb_output_once shell pm path android | tr -d '\r' || true)"
+  [[ "$package_manager_state" == package:* ]] && break
+  sleep 2
+done
+[[ "$package_manager_state" == package:* ]] || {
+  record_error "Android package manager did not become ready: $package_manager_state"
+  exit 1
+}
+record_pass 'Android package manager responded before APK installation'
 record_phase 'initial x86_64 Candidate APK install'
 adb_install_candidate || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
 record_pass 'initial x86_64 Candidate APK install succeeded'
