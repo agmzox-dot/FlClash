@@ -313,14 +313,15 @@ record_phase 'emulator package manager readiness'
 package_manager_state=''
 package_manager_deadline=$((SECONDS + 120))
 while (( SECONDS < package_manager_deadline )); do
-  package_manager_state="$(adb_output_once shell pm path android | tr -d '\r' || true)"
+  package_manager_state="$(adb_output_once shell cmd package list packages --user 0 | tr -d '\r' | sed -n '1p' || true)"
+  printf 'package manager probe: %s\n' "$package_manager_state" >> "$error_file"
   [[ "$package_manager_state" == package:* ]] && break
   sleep 2
 done
-[[ "$package_manager_state" == package:* ]] || {
+if [[ "$package_manager_state" != package:* ]]; then
   record_error "Android package manager did not become ready: $package_manager_state"
   exit 1
-}
+fi
 record_pass 'Android package manager responded before APK installation'
 record_phase 'initial x86_64 Candidate APK install'
 adb_install_candidate || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
