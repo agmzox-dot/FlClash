@@ -21,10 +21,6 @@ val hasReleaseSigning = releaseStoreFile.exists() &&
     releaseStorePassword != null &&
     releaseKeyAlias != null &&
     releaseKeyPassword != null
-val adaptiveEmulatorDebuggable = providers.gradleProperty("adaptiveEmulatorDebuggable")
-    .map { it.toBoolean() }
-    .getOrElse(false)
-
 android {
     namespace = "com.follow.clash"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -66,9 +62,8 @@ android {
         }
 
         release {
-            isDebuggable = adaptiveEmulatorDebuggable
-            isMinifyEnabled = !adaptiveEmulatorDebuggable
-            isShrinkResources = !adaptiveEmulatorDebuggable
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
