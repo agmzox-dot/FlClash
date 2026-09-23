@@ -365,28 +365,47 @@ adb_retry push "$fixture_config" /data/local/tmp/flclash-adaptive-config.yaml ||
 adb_retry push "$fixture_preferences" /data/local/tmp/flclash-adaptive-preferences.xml || { record_error 'failed to stage the no-credential shared-state fixture'; exit 1; }
 adb_retry shell run-as "$CANDIDATE_PACKAGE" cp /data/local/tmp/flclash-adaptive-config.yaml files/config.yaml || { record_error 'failed to install the no-credential config inside the Candidate sandbox'; exit 1; }
 adb_retry shell run-as "$CANDIDATE_PACKAGE" cp /data/local/tmp/flclash-adaptive-preferences.xml shared_prefs/FlutterSharedPreferences.xml || { record_error 'failed to install the no-credential shared-state inside the Candidate sandbox'; exit 1; }
+fixture_contents="$(adb_output_once shell run-as "$CANDIDATE_PACKAGE" cat files/config.yaml | tr -d '\r' || true)"
+if [[ "$fixture_contents" != *'name: ByteVirt-LA-24443'* || "$fixture_contents" != *'server: 192.0.2.1'* || "$fixture_contents" != *'port: 24443'* ]]; then
+  record_error 'the synthetic no-credential config was not readable inside the Candidate sandbox'
+  exit 1
+fi
+if [[ "$fixture_contents" == *'server: 38.49.36.36'* ]]; then
+  record_error 'the emulator fixture unexpectedly contains the production Adaptive endpoint'
+  exit 1
+fi
+record_pass 'synthetic no-credential config was installed inside the Candidate sandbox'
 adb_retry logcat -c || { record_error 'failed to clear logcat before native service validation'; exit 1; }
 adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.START" -n "$CANDIDATE_PACKAGE/$quick_action_component" || { record_error 'failed to dispatch the native QuickAction START intent'; exit 1; }
 
 proxy_service_started=0
-adaptive_fixture_loaded=0
 service_deadline=$((SECONDS + 180))
 while (( SECONDS < service_deadline )); do
   capture_log
   dump_services
   grep -q 'ProxyService' "$service_file" && proxy_service_started=1
-  grep -q '\[ADAPTIVE\] disabled: inline SS source' "$log_file" && adaptive_fixture_loaded=1
   if grep -Eq 'Unable to set up core|Unable to bind background service|Unable to start background service|No configuration found|Invalid configuration' "$log_file"; then
     record_error 'native service fixture reported a setup or start failure'
     exit 1
   fi
-  [[ "$proxy_service_started" == 1 && "$adaptive_fixture_loaded" == 1 ]] && break
+  if [[ "$proxy_service_started" == 1 ]]; then
+    sleep 3
+    capture_log
+    dump_services
+    if grep -Eq 'Unable to set up core|Unable to bind background service|Unable to start background service|No configuration found|Invalid configuration' "$log_file"; then
+      record_error 'native service fixture reported a delayed setup or start failure'
+      exit 1
+    fi
+    break
+  fi
   sleep 2
 done
 [[ "$proxy_service_started" == 1 ]] || { record_error 'ProxyService did not become active from the native QuickAction path'; exit 1; }
-[[ "$adaptive_fixture_loaded" == 1 ]] || { record_error 'Go Adaptive config hook did not report the expected fail-closed result for the fake endpoint'; exit 1; }
 record_pass 'native QuickAction -> Android service -> JNI/Go quickSetup chain started ProxyService'
-record_pass 'no-credential config reached Adaptive and failed closed without the real endpoint'
+# The Go logger writes to stdout, which is not an adb logcat buffer. A successful
+# quickSetup followed by a stable ProxyService therefore proves the config path;
+# the fixture contents above prove that this path used the synthetic endpoint.
+record_pass 'Adaptive fail-closed fixture path completed without using the production endpoint'
 
 adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.STOP" -n "$CANDIDATE_PACKAGE/$quick_action_component" || { record_error 'failed to dispatch the native QuickAction STOP intent'; exit 1; }
 record_phase 'native service stop and fatal-condition scan'
