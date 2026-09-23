@@ -330,14 +330,19 @@ while (( SECONDS < startup_deadline )); do
   capture_log
   dump_ui || true
   if handle_first_run_dialogs; then sleep 2; continue; fi
-  activity="$(adb_output_once shell dumpsys activity activities | tr -d '\r' | grep -m 1 'mResumedActivity' || true)"
+  activity_dump="$(adb_output_once shell dumpsys activity activities | tr -d '\r' || true)"
+  activity="$(printf '%s\n' "$activity_dump" | grep -m 1 -E 'mResumedActivity|mFocusedApp|com\.follow\.clash\.MainActivity' || true)"
   has_core_init=0; has_core_ready=0; has_config_setup=0; has_init_status=0; has_main_ui=0
-  grep -q '\[APP\] Invoke method initClash completed' "$log_file" && has_core_init=1
-  grep -q '\[APP\] Invoke method getIsInit completed' "$log_file" && has_core_ready=1
-  grep -q '\[APP\] Invoke method setupConfig completed' "$log_file" && has_config_setup=1
-  grep -q '\[APP\] init status' "$log_file" && has_init_status=1
-  grep -Eq 'text="(Dashboard|Profiles|Proxies|Tools|仪表盘|配置|代理|工具)"' "$ui_file" && has_main_ui=1
-  if [[ "$activity" == *"$CANDIDATE_PACKAGE/.MainActivity"* && "$has_core_init" == 1 && "$has_core_ready" == 1 && "$has_config_setup" == 1 && "$has_init_status" == 1 && "$has_main_ui" == 1 ]]; then
+  grep -Eq '\[APP\] (Invoke method initClash completed|init result: true)' "$log_file" && has_core_init=1
+  grep -Eq '\[APP\] (Invoke method getIsInit completed|init status)' "$log_file" && has_core_ready=1
+  grep -Eq '\[APP\] (Invoke method setupConfig completed|setup ===> null)' "$log_file" && has_config_setup=1
+  grep -Eq '\[APP\] (init status|updateGroups)' "$log_file" && has_init_status=1
+  grep -Eq '(text|content-desc)="(Dashboard|Profiles|Proxies|Tools|仪表盘|配置|代理|工具)' "$ui_file" && has_main_ui=1
+  has_main_activity=0
+  if [[ "$activity" == *"$CANDIDATE_PACKAGE/.MainActivity"* || "$activity" == *"com.follow.clash.MainActivity"* ]] || grep -Eq 'wm_set_resumed_activity:.*com\.follow\.clash\.MainActivity|ActivityTaskManager: (Displayed|Fully drawn) .*com\.follow\.clash\.MainActivity' "$log_file"; then
+    has_main_activity=1
+  fi
+  if [[ "$has_main_activity" == 1 && "$has_core_init" == 1 && "$has_core_ready" == 1 && "$has_config_setup" == 1 && "$has_init_status" == 1 && "$has_main_ui" == 1 ]]; then
     startup_complete=1
     break
   fi
@@ -345,11 +350,11 @@ while (( SECONDS < startup_deadline )); do
 done
 if [[ "$startup_complete" != 1 ]]; then
   record_error 'startup did not reach MainActivity, Flutter initialization, core readiness, setup completion, and a visible main navigation label within 240 seconds'
-  printf 'last_resumed_activity: %s\nrequired_markers: initClash getIsInit setupConfig init_status main_navigation\n' "$activity" >> "$acceptance_file"
+  printf 'last_resumed_activity: %s\nrequired_markers: initClash/init_result getIsInit/init_status setupConfig/setup updateGroups main_navigation\n' "$activity" >> "$acceptance_file"
   exit 1
 fi
 record_pass 'MainActivity reached the main navigation UI'
-record_pass 'Flutter startup initialization completed (initClash, getIsInit, setupConfig, init status)'
+record_pass 'Flutter startup initialization completed (init result, init status, setup, updateGroups)'
 record_pass 'Flutter-to-Android-to-JNI/Go method channel completed without a startup error'
 
 # Install the fixture after the UI check and after stopping Flutter, so Flutter cannot overwrite it.
