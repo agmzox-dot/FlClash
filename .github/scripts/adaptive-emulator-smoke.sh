@@ -142,9 +142,11 @@ dump_services() {
 
 tap_text() {
   local text="$1"
+  local nodes
   local line
   local bounds
-  line="$(grep -F -e "text=\"$text\"" -e "content-desc=\"$text\"" "$ui_file" | head -n 1 || true)"
+  nodes="$(grep -o '<node [^>]*>' "$ui_file" || true)"
+  line="$(printf '%s\n' "$nodes" | grep -F -m 1 -e "text=\"$text\"" -e "content-desc=\"$text\"" || true)"
   bounds="$(printf '%s' "$line" | sed -n 's/.*bounds="\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]".*/\1 \2 \3 \4/p')"
   if [[ -z "$bounds" ]]; then
     return 1
