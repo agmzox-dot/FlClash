@@ -14,6 +14,7 @@ signature_file="$GITHUB_WORKSPACE/emulator-signature.txt"
 acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
+quick_action_component='com.follow.clash.QuickActionActivity'
 adb_timeout_seconds=12
 apk_install_timeout_seconds=300
 
@@ -365,7 +366,7 @@ adb_retry push "$fixture_preferences" /data/local/tmp/flclash-adaptive-preferenc
 adb_retry shell run-as "$CANDIDATE_PACKAGE" cp /data/local/tmp/flclash-adaptive-config.yaml files/config.yaml || { record_error 'failed to install the no-credential config inside the Candidate sandbox'; exit 1; }
 adb_retry shell run-as "$CANDIDATE_PACKAGE" cp /data/local/tmp/flclash-adaptive-preferences.xml shared_prefs/FlutterSharedPreferences.xml || { record_error 'failed to install the no-credential shared-state inside the Candidate sandbox'; exit 1; }
 adb_retry logcat -c || { record_error 'failed to clear logcat before native service validation'; exit 1; }
-adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.START" -n "$CANDIDATE_PACKAGE/.QuickActionActivity" || { record_error 'failed to dispatch the native QuickAction START intent'; exit 1; }
+adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.START" -n "$CANDIDATE_PACKAGE/$quick_action_component" || { record_error 'failed to dispatch the native QuickAction START intent'; exit 1; }
 
 proxy_service_started=0
 adaptive_fixture_loaded=0
@@ -387,7 +388,7 @@ done
 record_pass 'native QuickAction -> Android service -> JNI/Go quickSetup chain started ProxyService'
 record_pass 'no-credential config reached Adaptive and failed closed without the real endpoint'
 
-adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.STOP" -n "$CANDIDATE_PACKAGE/.QuickActionActivity" || { record_error 'failed to dispatch the native QuickAction STOP intent'; exit 1; }
+adb_retry shell am start -a "$CANDIDATE_PACKAGE.action.STOP" -n "$CANDIDATE_PACKAGE/$quick_action_component" || { record_error 'failed to dispatch the native QuickAction STOP intent'; exit 1; }
 record_phase 'native service stop and fatal-condition scan'
 service_stopped=0
 stop_deadline=$((SECONDS + 90))
