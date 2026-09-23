@@ -144,7 +144,7 @@ tap_text() {
   local text="$1"
   local line
   local bounds
-  line="$(grep -F "text=\"$text\"" "$ui_file" | head -n 1 || true)"
+  line="$(grep -F -e "text=\"$text\"" -e "content-desc=\"$text\"" "$ui_file" | head -n 1 || true)"
   bounds="$(printf '%s' "$line" | sed -n 's/.*bounds="\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]".*/\1 \2 \3 \4/p')"
   if [[ -z "$bounds" ]]; then
     return 1
