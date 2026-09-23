@@ -5,8 +5,6 @@ log-level: debug
 ipv6: false
 
 proxies:
-  - name: DIRECT
-    type: direct
   - name: ByteVirt-LA-24443
     type: ss
     server: 192.0.2.1
