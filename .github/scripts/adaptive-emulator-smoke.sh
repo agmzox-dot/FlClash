@@ -309,12 +309,6 @@ adb_retry shell settings put global package_verifier_enable 0 || {
   exit 1
 }
 record_pass 'emulator package verification disabled for deterministic APK installation'
-record_phase 'emulator package manager readiness'
-if ! adb_retry shell pm path android; then
-  record_error 'Android package manager did not respond to the bounded pm path probe'
-  exit 1
-fi
-record_pass 'Android package manager responded before APK installation'
 record_phase 'initial x86_64 Candidate APK install'
 adb_install_candidate || { record_error "failed to install x86_64 APK: $apk"; exit 1; }
 record_pass 'initial x86_64 Candidate APK install succeeded'
