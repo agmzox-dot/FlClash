@@ -15,7 +15,7 @@ acceptance_file="$GITHUB_WORKSPACE/emulator-acceptance.txt"
 fixture_config="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-config.yaml"
 fixture_preferences="$GITHUB_WORKSPACE/.github/fixtures/adaptive-emulator-shared-preferences.xml"
 adb_timeout_seconds=12
-apk_install_timeout_seconds=600
+apk_install_timeout_seconds=300
 
 : > "$log_file"
 : > "$error_file"
@@ -70,10 +70,10 @@ adb_install_candidate() {
     output_file="$GITHUB_WORKSPACE/adb-install-attempt-${attempts}.log"
     : > "$output_file"
     status=''
-    printf 'starting non-streaming adb install attempt %s (timeout %ss)\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
-    if bounded_timeout "${apk_install_timeout_seconds}s" adb install --no-streaming --no-incremental -r -d --abi x86_64 "$apk" >> "$output_file" 2>&1; then
+    printf 'starting streaming adb install attempt %s (timeout %ss)\n' "$attempts" "$apk_install_timeout_seconds" >> "$error_file"
+    if bounded_timeout "${apk_install_timeout_seconds}s" adb install --streaming --no-incremental -r -d --abi x86_64 "$apk" >> "$output_file" 2>&1; then
       if grep -Eq '(^|[[:space:]])Success([[:space:]]|$)' "$output_file"; then
-        printf 'non-streaming adb install attempt %s succeeded:\n' "$attempts" >> "$error_file"
+        printf 'streaming adb install attempt %s succeeded:\n' "$attempts" >> "$error_file"
         cat "$output_file" >> "$error_file"
         return 0
       fi
@@ -81,18 +81,18 @@ adb_install_candidate() {
     else
       status=$?
     fi
-    printf 'non-streaming adb install attempt %s failed (exit %s):\n' "$attempts" "$status" >> "$error_file"
+    printf 'streaming adb install attempt %s failed (exit %s):\n' "$attempts" "$status" >> "$error_file"
     cat "$output_file" >> "$error_file"
     detail="$(tr '\r\n' ' ' < "$output_file" | tr -s ' ')"
     if (( ${#detail} > 240 )); then
       detail="${detail: -240}"
     fi
     if (( status == 124 || status == 137 )); then
-      record_error "non-streaming APK install attempt $attempts/2 timed out after ${apk_install_timeout_seconds} seconds"
+      record_error "streaming APK install attempt $attempts/2 timed out after ${apk_install_timeout_seconds} seconds"
     elif [[ -n "$detail" ]]; then
-      record_error "non-streaming APK install attempt $attempts/2 failed: $detail"
+      record_error "streaming APK install attempt $attempts/2 failed: $detail"
     else
-      record_error "non-streaming APK install attempt $attempts/2 failed with exit $status"
+      record_error "streaming APK install attempt $attempts/2 failed with exit $status"
     fi
     attempts=$((attempts + 1))
     if (( attempts <= 2 )); then
