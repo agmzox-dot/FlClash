@@ -254,7 +254,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Verify KVM and emulator hardware acceleration
+      - name: Verify /dev/kvm access
         shell: bash
         run: |
           set -euo pipefail
@@ -277,6 +277,29 @@ jobs:
             ls -l /dev/kvm
             printf '\nreadable: %s\nwritable: %s\n' "$([[ -r /dev/kvm ]] && echo yes || echo no)" "$([[ -w /dev/kvm ]] && echo yes || echo no)"
           } | tee "$GITHUB_WORKSPACE/kvm-check.log"
+      - name: Ensure Android emulator SDK component is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [[ -n "$sdk_root" && -d "$sdk_root" ]] || { echo "Android SDK root is unavailable: $sdk_root" >&2; exit 1; }
+          sdkmanager_bin="$(command -v sdkmanager || true)"
+          if [[ -z "$sdkmanager_bin" ]]; then
+            sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          [[ -x "$sdkmanager_bin" ]] || { echo "Android sdkmanager is unavailable: $sdkmanager_bin" >&2; exit 1; }
+          yes | "$sdkmanager_bin" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager_bin" --sdk_root="$sdk_root" emulator
+          test -x "$sdk_root/emulator/emulator"
+      - name: Verify Android emulator hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() {
+            printf '%s\n' "$1" | tee -a "$GITHUB_WORKSPACE/emulator-environment-error.log" >&2
+            printf '::error title=Android emulator environment blocked::%s\n' "$1"
+            exit 1
+          }
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           emulator_bin="$(command -v emulator || true)"
           if [[ -z "$emulator_bin" && -n "$sdk_root" ]]; then
