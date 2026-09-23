@@ -67,8 +67,8 @@ android {
 
         release {
             isDebuggable = adaptiveEmulatorDebuggable
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = !adaptiveEmulatorDebuggable
+            isShrinkResources = !adaptiveEmulatorDebuggable
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
