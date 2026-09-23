@@ -13,8 +13,8 @@ env:
   NDK_VERSION: 'r28c'
   CANDIDATE_PACKAGE: com.follow.clash.adaptive.candidate
 jobs:
-  candidate:
-    name: Android Adaptive candidate and emulator smoke test
+  candidate_build:
+    name: Android Adaptive candidate build and tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -168,6 +168,68 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: dart setup.dart android --env stable --targets apk --arch amd64 -v
+      - name: Prepare emulator APK inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p emulator-inputs
+          apk="$(find dist -type f -name '*android-x86_64*.apk' -print -quit)"
+          if [ -z "$apk" ]; then
+            echo 'x86_64 emulator APK was not produced' >&2
+            find dist -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
+          cp "$apk" emulator-inputs/FlClash-Adaptive-Candidate-0.8.98-a1-android-x86_64.apk
+          cp adaptive-artifact/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk emulator-inputs/
+      - name: Upload emulator APK inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Adaptive-emulator-inputs
+          path: emulator-inputs/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Finalize arm64 artifact checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd adaptive-artifact && sha256sum *.apk BUILD_INFO.txt > SHA256SUMS)
+          cat adaptive-artifact/SHA256SUMS
+      - name: Upload private candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlClash-Adaptive-Candidate-0.8.98-a1-arm64
+          path: adaptive-artifact/
+          if-no-files-found: error
+          retention-days: 14
+
+  emulator_acceptance:
+    name: Android Adaptive emulator acceptance
+    needs: candidate_build
+    if: ${{ needs.candidate_build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+      - name: Download emulator APK inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: FlClash-Adaptive-emulator-inputs
+          path: emulator-inputs
+      - name: Prepare emulator APK inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist adaptive-artifact
+          x86_apk='emulator-inputs/FlClash-Adaptive-Candidate-0.8.98-a1-android-x86_64.apk'
+          arm64_apk='emulator-inputs/FlClash-Adaptive-Candidate-0.8.98-a1-arm64.apk'
+          test -s "$x86_apk" || { echo "Missing x86_64 emulator APK: $x86_apk" >&2; exit 1; }
+          test -s "$arm64_apk" || { echo "Missing arm64 Candidate APK: $arm64_apk" >&2; exit 1; }
+          cp "$x86_apk" dist/
+          cp "$arm64_apk" adaptive-artifact/
       - name: Initialize emulator diagnostics
         if: always()
         shell: bash
@@ -181,7 +243,53 @@ jobs:
           : > "$GITHUB_WORKSPACE/emulator-acceptance.txt"
           : > "$GITHUB_WORKSPACE/emulator-runner.log"
           : > "$GITHUB_WORKSPACE/emulator-runner-error.log"
+          : > "$GITHUB_WORKSPACE/kvm-check.log"
+          : > "$GITHUB_WORKSPACE/emulator-accel-check.log"
+          : > "$GITHUB_WORKSPACE/emulator-environment-error.log"
           printf '%s\n' 'emulator validation diagnostics initialized' > "$GITHUB_WORKSPACE/emulator-error.log"
+      - name: Enable KVM group permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify KVM and emulator hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() {
+            printf '%s\n' "$1" | tee -a "$GITHUB_WORKSPACE/emulator-environment-error.log" >&2
+            printf '::error title=Android emulator environment blocked::%s\n' "$1"
+            exit 1
+          }
+          if [[ ! -e /dev/kvm ]]; then
+            fail '/dev/kvm is missing; refusing to start a software-emulated Android test device'
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            ls -l /dev/kvm | tee -a "$GITHUB_WORKSPACE/emulator-environment-error.log" || true
+            fail "$(id -un) cannot read and write /dev/kvm"
+          fi
+          {
+            printf 'user: %s\n' "$(id -un)"
+            printf 'groups: %s\n' "$(id -Gn)"
+            printf 'kvm: '
+            ls -l /dev/kvm
+            printf '\nreadable: %s\nwritable: %s\n' "$([[ -r /dev/kvm ]] && echo yes || echo no)" "$([[ -w /dev/kvm ]] && echo yes || echo no)"
+          } | tee "$GITHUB_WORKSPACE/kvm-check.log"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          emulator_bin="$(command -v emulator || true)"
+          if [[ -z "$emulator_bin" && -n "$sdk_root" ]]; then
+            emulator_bin="$sdk_root/emulator/emulator"
+          fi
+          [[ -x "$emulator_bin" ]] || fail "Android emulator binary is unavailable at $emulator_bin"
+          if ! "$emulator_bin" -accel-check 2>&1 | tee "$GITHUB_WORKSPACE/emulator-accel-check.log"; then
+            fail 'Android emulator -accel-check failed; refusing to start without hardware acceleration'
+          fi
+          if ! grep -Eiq 'KVM.*(installed and )?usable|KVM.*usable' "$GITHUB_WORKSPACE/emulator-accel-check.log"; then
+            fail 'Android emulator -accel-check did not report usable KVM acceleration'
+          fi
+          printf '%s\n' 'KVM is present, accessible by the current user, and reported usable by the Android emulator.'
       - name: Android emulator launch validation
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -189,8 +297,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -accel on -no-snapshot -noaudio -no-boot-anim
           disable-animations: false
           # The action executes each script line separately; keep this as one command.
           script: timeout --signal=TERM --kill-after=30s 60m bash "$GITHUB_WORKSPACE/.github/scripts/adaptive-emulator-smoke.sh"
@@ -213,8 +321,8 @@ jobs:
               timeout --signal=TERM --kill-after=5s 30s adb shell dumpsys activity activities || true
             } >> "$runner_error" 2>&1
           else
-              printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"
-            fi
+            printf '%s\n' 'adb was not available after emulator-runner returned' >> "$runner_error"
+          fi
       - name: Publish emulator acceptance summary
         if: always()
         shell: bash
@@ -222,6 +330,16 @@ jobs:
           set -u
           {
             printf '%s\n' '## Android emulator acceptance'
+            printf '%s\n' '' '### Emulator environment'
+            if [[ -s "$GITHUB_WORKSPACE/emulator-environment-error.log" ]]; then
+              cat "$GITHUB_WORKSPACE/emulator-environment-error.log"
+            else
+              printf '%s\n' 'No KVM environment error was recorded.'
+            fi
+            printf '%s\n' '' '### KVM check'
+            sed -n '1,120p' "$GITHUB_WORKSPACE/kvm-check.log" 2>/dev/null || true
+            printf '%s\n' '' '### Emulator acceleration check'
+            sed -n '1,120p' "$GITHUB_WORKSPACE/emulator-accel-check.log" 2>/dev/null || true
             printf '%s\n' '' '### Acceptance records'
             if [[ -s "$GITHUB_WORKSPACE/emulator-acceptance.txt" ]]; then
               sed -n '1,240p' "$GITHUB_WORKSPACE/emulator-acceptance.txt"
@@ -261,18 +379,8 @@ jobs:
             adb-install-attempt-*.log
             emulator-runner.log
             emulator-runner-error.log
+            kvm-check.log
+            emulator-accel-check.log
+            emulator-environment-error.log
           if-no-files-found: warn
-          retention-days: 14
-      - name: Finalize arm64 artifact checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd adaptive-artifact && sha256sum *.apk BUILD_INFO.txt > SHA256SUMS)
-          cat adaptive-artifact/SHA256SUMS
-      - name: Upload private candidate artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FlClash-Adaptive-Candidate-0.8.98-a1-arm64
-          path: adaptive-artifact/
-          if-no-files-found: error
           retention-days: 14
