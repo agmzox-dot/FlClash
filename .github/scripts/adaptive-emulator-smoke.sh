@@ -310,25 +310,8 @@ adb_retry shell settings put global package_verifier_enable 0 || {
 }
 record_pass 'emulator package verification disabled for deterministic APK installation'
 record_phase 'emulator package manager readiness'
-package_manager_state=''
-package_manager_ready=0
-package_manager_deadline=$((SECONDS + 120))
-while (( SECONDS < package_manager_deadline )); do
-  package_manager_state=''
-  package_manager_probe_status=1
-  if package_manager_state="$(bounded_timeout "${adb_timeout_seconds}s" adb shell pm path android 2>> "$error_file")"; then
-    package_manager_probe_status=0
-  fi
-  package_manager_state="$(printf '%s' "$package_manager_state" | tr -d '\r' | sed -n '1p')"
-  printf 'package manager probe (status %s): %s\n' "$package_manager_probe_status" "$package_manager_state" >> "$error_file"
-  if (( package_manager_probe_status == 0 )); then
-    package_manager_ready=1
-    break
-  fi
-  sleep 2
-done
-if (( package_manager_ready != 1 )); then
-  record_error "Android package manager did not become ready after pm path probe: $package_manager_state"
+if ! adb_retry shell pm path android; then
+  record_error 'Android package manager did not respond to the bounded pm path probe'
   exit 1
 fi
 record_pass 'Android package manager responded before APK installation'
