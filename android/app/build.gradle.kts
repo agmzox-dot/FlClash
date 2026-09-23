@@ -21,6 +21,9 @@ val hasReleaseSigning = releaseStoreFile.exists() &&
     releaseStorePassword != null &&
     releaseKeyAlias != null &&
     releaseKeyPassword != null
+val adaptiveEmulatorDebuggable = providers.gradleProperty("adaptiveEmulatorDebuggable")
+    .map { it.toBoolean() }
+    .getOrElse(false)
 
 android {
     namespace = "com.follow.clash"
@@ -63,6 +66,7 @@ android {
         }
 
         release {
+            isDebuggable = adaptiveEmulatorDebuggable
             isMinifyEnabled = true
             isShrinkResources = true
             if (hasReleaseSigning) {
