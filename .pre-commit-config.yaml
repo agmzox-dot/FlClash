@@ -1,6 +1,12 @@
 repos:
   - repo: local
     hooks:
+      - id: sensitive-files
+        name: sensitive file check
+        entry: bash tool/check_sensitive_files.sh --staged
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
       - id: dart-format
         name: dart format
         entry: dart format

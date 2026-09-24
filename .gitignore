@@ -77,3 +77,81 @@ devtools_options.yaml
 .fvm/
 .fvmrc
 /coverage/lcov.info
+
+# Local credential-bearing configuration. Keep these rules scoped to local
+# files and known user-export names so committed source and test fixtures stay
+# visible to Git.
+/.env
+/.env.*
+!/.env.example
+!/.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+/proxy.yaml
+/proxy.yml
+/proxy.json
+/subscription.yaml
+/subscription.yml
+/subscription.json
+/subscriptions.yaml
+/subscriptions.yml
+/subscriptions.json
+/profile.yaml
+/profile.yml
+/profile.json
+/profiles.yaml
+/profiles.yml
+/profiles.json
+/credentials.yaml
+/credentials.yml
+/credentials.json
+/secrets.yaml
+/secrets.yml
+/secrets.json
+/client.ovpn
+/profile.ovpn
+**/*.local.yaml
+**/*.local.yml
+**/*.local.json
+**/*.local.conf
+**/*.local.ini
+**/*.local.toml
+**/*.local.ovpn
+**/*.secret
+**/*.secret.yaml
+**/*.secret.yml
+**/*.secret.json
+**/*.credentials
+**/*.credentials.yaml
+**/*.credentials.yml
+**/*.credentials.json
+
+# Private key and keystore material. Public certificates (*.crt) are not
+# ignored; the filename patterns below target private key conventions.
+**/.ssh/id_rsa
+**/.ssh/id_ed25519
+**/.ssh/id_ecdsa
+**/.ssh/id_dsa
+**/id_rsa
+**/id_ed25519
+**/id_ecdsa
+**/id_dsa
+**/private.pem
+**/private_*.pem
+**/private-*.pem
+**/*_private.pem
+**/*-private.pem
+**/*_key.pem
+**/*-key.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.keystore
+**/*.jks
+
+# This upstream test certificate key is intentionally tracked and is checked
+# by the staged-content scanner if it is ever changed.
+!core/Clash.Meta/test/config/example.org-key.pem

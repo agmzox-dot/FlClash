@@ -33,6 +33,12 @@ jobs:
       - name: Test comment density hook
         run: bash tool/check_comment_density_test.sh
 
+      - name: Check sensitive files
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: bash tool/check_sensitive_files.sh --range "$BASE_SHA" "$HEAD_SHA"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
