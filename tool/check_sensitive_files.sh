@@ -164,7 +164,11 @@ check_range_path() {
       ;;
   esac
 
-  diff="$(git diff "$base_sha" "$head_sha" --no-color --unified=0 -- "$path")"
+  if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+    diff="$(git show --format= --no-color --unified=0 "$head_sha" -- "$path")"
+  else
+    diff="$(git diff "$base_sha" "$head_sha" --no-color --unified=0 -- "$path")"
+  fi
   while IFS= read -r line; do
     [[ "$line" == ++++* ]] && continue
     [[ "$line" != +* ]] && continue
@@ -201,7 +205,7 @@ case "$mode" in
     done < <(git diff --cached --name-only --diff-filter=ACMRT -z)
     ;;
   range)
-    if [[ "$base_sha" =~ ^0+$ ]]; then
+    if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
       while IFS= read -r -d '' path; do
         check_range_path "$path"
       done < <(git diff-tree --root --no-commit-id --name-only --diff-filter=ACMRT -r -z "$head_sha")
